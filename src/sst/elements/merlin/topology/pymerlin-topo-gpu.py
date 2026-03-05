@@ -22,9 +22,10 @@ from sst.merlin.base import *
 class topoGPU(Topology):
     def __init__(self):
         Topology.__init__(self)
-        self._declareClassVariables(["link_latency", "host_link_latency", "routing_mode"])
+        self._declareClassVariables(["link_latency", "host_link_latency", "routing_mode", "bundleEndpoints"])
         self._declareParams("main", ["num_gpu", "num_nvswitches"])
         self.routing_mode = "packet_rr"
+        self.bundleEndpoints = True
         self._subscribeToPlatformParamSet("topology")
 
     def getName(self):
