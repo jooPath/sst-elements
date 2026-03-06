@@ -241,9 +241,7 @@ bool HadesMP::sharpNotifyAckReceivedLocal( int dstRank, uint64_t collectiveId,
             "SHARP COMPLETE rank=%d group=%u cid=%" PRIu64 " seg=%" PRIu64 " (erased)\n",
             dstRank, group, collectiveId, segId );
 
-        if ( retFunc ) {
-            (*retFunc)(0);
-        }
+        scheduleSharpCompletion( retFunc );
         return true;
     }
 
@@ -272,6 +270,18 @@ bool HadesMP::sharpNotifyDataReceivedLocal( int dstRank, uint64_t collectiveId,
     ++iter->second.dataCount;
     (void) segId;
     return true;
+}
+
+
+void HadesMP::scheduleSharpCompletion( MP::Functor* retFunc )
+{
+    if ( !retFunc ) {
+        return;
+    }
+
+    // Defer completion callback to avoid re-entering a new allreduce_sharp()
+    // from inside the NIC recv path call stack.
+    functionSM().start( FunctionSM::MakeProgress, retFunc, new MakeProgressStartEvent() );
 }
 
 void HadesMP::reduce(const Hermes::MemAddr& mydata,

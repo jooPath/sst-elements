@@ -225,6 +225,8 @@ class HadesMP : public MP::Interface
     bool sharpNotifyDataReceivedLocal( int dstRank, uint64_t collectiveId,
                                          uint64_t segId, MP::Communicator group );
 
+    void scheduleSharpCompletion( MP::Functor* retFunc );
+
     std::unordered_map<SharpKey, SharpReqState> m_sharpReqMap;
     static std::vector<HadesMP*> s_instances;
     Output  m_dbg;
