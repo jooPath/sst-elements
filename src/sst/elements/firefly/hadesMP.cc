@@ -98,8 +98,13 @@ void HadesMP::scheduleSharpCompletion( MP::Functor* retFunc )
     }
 
     m_sharpCompletionScheduled = true;
-    assert( m_sharpSelfLink );
-    m_sharpSelfLink->send( 0, new SharpSelfEvent() );
+    if ( m_sharpSelfLink ) {
+        m_sharpSelfLink->send( 0, new SharpSelfEvent() );
+    } else {
+        // Defensive fallback: avoid a hard crash if self-link setup failed.
+        // This path is not expected in normal HadesMP construction.
+        processSharpCompletions();
+    }
     assert( m_sharpSelfLink );
         std::bind( &HadesMP::processSharpCompletions, this ),
         new MakeProgressStartEvent() );

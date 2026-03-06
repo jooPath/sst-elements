@@ -252,8 +252,6 @@ class HadesMP : public MP::Interface
         MP::MessageRequest req = nullptr;
     };
 
-    // Deferred completion event to ensure SHARP callbacks never execute
-    // directly in the recv callback stack.
     static constexpr uint64_t m_sharpSegmentBytes = 1024;
     static constexpr uint32_t m_sharpTagBase = 0x5A000000u;
 
@@ -271,7 +269,6 @@ class HadesMP : public MP::Interface
     std::unordered_map<SharpKey, SharpReqState, SharpKeyHash> m_sharpReqMap;
     std::deque<MP::Functor*> m_sharpCompletionQ;
     bool m_sharpCompletionScheduled = false;
-    // Self-link used to drain m_sharpCompletionQ out of the receive path.
 };
 
 } // namesapce Firefly
