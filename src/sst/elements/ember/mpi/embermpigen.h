@@ -48,6 +48,7 @@ namespace Ember {
 #define enQ_scatterv mpi().scatterv
 #define enQ_reduce mpi().reduce
 #define enQ_allreduce mpi().allreduce
+#define enQ_allreduce_sharp mpi().allreduce_sharp
 #define enQ_alltoall mpi().alltoall
 #define enQ_alltoallv mpi().alltoallv
 #define enQ_allgather mpi().allgather

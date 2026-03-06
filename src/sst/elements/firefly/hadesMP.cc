@@ -118,6 +118,22 @@ void HadesMP::allreduce(const Hermes::MemAddr& mydata,
                             CollectiveStartEvent::Allreduce));
 }
 
+void HadesMP::allreduce_sharp(const Hermes::MemAddr& mydata,
+        const Hermes::MemAddr& result, uint64_t bytes,
+        ReductionOperation op, Communicator group,
+        uint64_t collectiveId, Functor* retFunc)
+{
+    (void) op;
+    dbg().debug(CALL_INFO,1,1,
+        "allreduce_sharp stub path: in=%p out=%p bytes=%" PRIu64 " group=%u collective_id=%" PRIu64 "\n",
+        &mydata, &result, bytes, group, collectiveId);
+
+    // Stub behavior for motif-path validation. No reuse of the legacy allreduce path.
+    if ( retFunc ) {
+        (*retFunc)( 0 );
+    }
+}
+
 void HadesMP::reduce(const Hermes::MemAddr& mydata,
 		const Hermes::MemAddr& result, uint32_t count,
         PayloadDataType dtype, ReductionOperation op, RankID root,

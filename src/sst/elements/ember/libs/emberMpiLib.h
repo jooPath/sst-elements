@@ -49,6 +49,7 @@
 #include "mpi/emberCommCreateEv.h"
 #include "mpi/emberCommDestroyEv.h"
 #include "mpi/emberallredev.h"
+#include "mpi/emberallredsharpev.h"
 #include "mpi/emberbcastev.h"
 #include "mpi/emberscatterev.h"
 #include "mpi/emberscattervev.h"
@@ -81,6 +82,7 @@ static SST::Output abort_output("EmberMpiLib: ", 5, -1, Output::STDERR);
     NAME( Alltoallv ) \
     NAME( Alltoall ) \
     NAME( Allreduce ) \
+    NAME( AllreduceSharp ) \
     NAME( Reduce ) \
     NAME( Bcast) \
     NAME( Scatter) \
@@ -237,6 +239,12 @@ class EmberMpiLib : public EmberLib {
 		q.push( new EmberAllreduceEvent( api(), m_output, m_Stats[Allreduce], mydata, result, count, dtype, op, group ) );
 	}
 
+    void allreduce_sharp( Queue& q, const Hermes::MemAddr& mydata, const Hermes::MemAddr& result,
+                uint64_t bytes, ReductionOperation op, Communicator group, uint64_t collectiveId ) {
+		q.push( new EmberAllreduceSharpEvent( api(), m_output, m_Stats[AllreduceSharp],
+                        mydata, result, bytes, op, group, collectiveId ) );
+	}
+
     void reduce( Queue& q, const Hermes::MemAddr& mydata, const Hermes::MemAddr& result, uint32_t count,
                 PayloadDataType dtype, ReductionOperation op, int root, Communicator group ) {
 		q.push( new EmberReduceEvent( api(), m_output, m_Stats[Reduce], mydata, result, count, dtype, op, root, group ) );
@@ -303,6 +311,13 @@ class EmberMpiLib : public EmberLib {
 		Hermes::MemAddr mydata( memAddr( _mydata ) );
 		Hermes::MemAddr result( memAddr( _result ) );
     	allreduce( q, mydata, result, count, dtype, op, group );
+	}
+
+    void allreduce_sharp( Queue& q, Addr _mydata, Addr _result, uint64_t bytes,
+                ReductionOperation op, Communicator group, uint64_t collectiveId ) {
+		Hermes::MemAddr mydata( memAddr( _mydata ) );
+		Hermes::MemAddr result( memAddr( _result ) );
+		allreduce_sharp( q, mydata, result, bytes, op, group, collectiveId );
 	}
     void reduce( Queue& q, Addr _mydata, Addr _result, uint32_t count, PayloadDataType dtype, ReductionOperation op,
                 int root, Communicator group )

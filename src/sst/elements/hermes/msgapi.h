@@ -145,6 +145,10 @@ class Interface : public Hermes::Interface {
         PayloadDataType dtype, ReductionOperation op,
         Communicator group, Functor*) { assert(0); }
 
+    virtual void allreduce_sharp(const Hermes::MemAddr&, const Hermes::MemAddr&, uint64_t bytes,
+        ReductionOperation op, Communicator group, uint64_t collectiveId,
+        Functor*) { assert(0); }
+
     virtual void reduce(const Hermes::MemAddr&, const Hermes::MemAddr&, uint32_t count,
         PayloadDataType dtype, ReductionOperation op, RankID root,
         Communicator group, Functor*) { assert(0); }
@@ -225,4 +229,3 @@ class Interface : public Hermes::Interface {
 }
 
 #endif
-

@@ -74,6 +74,7 @@ libember_la_SOURCES = \
 	libs/mpi/emberCommCreateEv.h \
 	libs/mpi/emberCommDestroyEv.h \
 	libs/mpi/emberCommSplitEv.h \
+	libs/mpi/emberallredsharpev.h \
 	mpi/embermpigen.h \
 	mpi/embermpigen.cc \
 	mpi/motifs/emberinit.h  \
@@ -121,6 +122,8 @@ libember_la_SOURCES = \
 	mpi/motifs/emberallpingpong.h \
 	mpi/motifs/emberallreduce.cc \
 	mpi/motifs/emberallreduce.h \
+	mpi/motifs/emberallreducesharp.cc \
+	mpi/motifs/emberallreducesharp.h \
 	mpi/motifs/emberallgatherv.cc \
 	mpi/motifs/emberallgatherv.h \
 	mpi/motifs/emberallgather.cc \
@@ -303,6 +306,7 @@ EXTRA_DIST = \
 	tests/testsuite_default_ember_sweep.py \
 	tests/testsuite_default_ember_qos.py \
 	tests/testsuite_default_ember_ESshmem.py \
+	tests/dragon_128_allreduce_sharp.py \
 	tests/ESshmem_List-of-Tests \
 	tests/qos-dragonfly.sh \
 	tests/qos-fattree.sh \
@@ -362,4 +366,3 @@ BUILT_SOURCES = \
 # 		Script 3:  Add '0x' prefix, and ',' suffix to each value
 %.inc: %.py
 	od -v -t x1 < $< | sed -e 's/^[^ ]*[ ]*//g' -e '/^\s*$$/d' -e 's/\([0-9a-f]*\)[ $$]*/0x\1,/g' > $@
-
