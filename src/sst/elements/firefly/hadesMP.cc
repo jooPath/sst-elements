@@ -223,10 +223,21 @@ void HadesMP::sharpNotifyAckReceived( int dstRank, uint64_t collectiveId,
 
     if ( req.ackCount >= req.expectedAcks ) {
         req.done = true;
-        if ( req.retFunc ) {
-            (*req.retFunc)(0);
-        }
+        MP::Functor* retFunc = req.retFunc;
+
+        dbg().debug(CALL_INFO,1,1,
+            "SHARP COMPLETE rank=%d cid=%" PRIu64 " seg=%" PRIu64 " (erase pending)\n",
+            dstRank, collectiveId, segId );
+
         g_sharpReqMap.erase( iter );
+
+        dbg().debug(CALL_INFO,1,1,
+            "SHARP COMPLETE rank=%d cid=%" PRIu64 " seg=%" PRIu64 " (erased)\n",
+            dstRank, collectiveId, segId );
+
+        if ( retFunc ) {
+            (*retFunc)(0);
+        }
         return;
     }
 
