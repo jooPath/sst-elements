@@ -19,6 +19,11 @@
 
 #include <sst/core/params.h>
 
+#include <deque>
+#include <set>
+#include <unordered_map>
+#include <vector>
+
 #include "sst/elements/hermes/msgapi.h"
 #include "hades.h"
 #include "functionSM.h"
@@ -201,10 +206,69 @@ class HadesMP : public MP::Interface
     virtual void comm_destroy( MP::Communicator, MP::Functor* );
 
   private:
+    struct SharpKey {
+        int rank;
+        uint32_t group;
+        uint64_t collectiveId;
+
+        bool operator==( const SharpKey& o ) const {
+            return rank == o.rank && group == o.group && collectiveId == o.collectiveId;
+        }
+    };
+
+    struct SharpKeyHash {
+        std::size_t operator()( const SharpKey& key ) const {
+            std::size_t h1 = std::hash<int>{}( key.rank );
+            std::size_t h2 = std::hash<uint32_t>{}( key.group );
+            std::size_t h3 = std::hash<uint64_t>{}( key.collectiveId );
+            return h1 ^ ( h2 << 1 ) ^ ( h3 << 3 );
+        }
+    };
+
+    enum class SharpType : uint32_t { Data = 0, Ack = 1 };
+
+    struct SharpPktHdr {
+        uint32_t sharpType;
+        uint32_t group;
+        uint64_t collectiveId;
+        uint64_t segId;
+        uint32_t segmentBytes;
+        int32_t srcRank;
+        int32_t dstRank;
+    };
+
+    struct SharpReqState {
+        uint64_t expectedAcks = 0;
+        uint64_t ackCount = 0;
+        std::set<uint64_t> ackedSegments;
+        MP::Functor* retFunc = nullptr;
+    };
+
+    struct SharpRecvCtx {
+        SharpType type;
+        SharpKey key;
+        uint64_t segId;
+        std::vector<uint8_t> payload;
+        MP::MessageRequest req = nullptr;
+    };
+
+    static constexpr uint64_t m_sharpSegmentBytes = 1024;
+    static constexpr uint32_t m_sharpTagBase = 0x5A000000u;
+
+    uint32_t makeSharpTag( SharpType type, Communicator group, uint64_t collectiveId, uint64_t segId ) const;
+    bool handleSharpRecv( int retval, SharpRecvCtx* ctx );
+    bool handleSharpSendDone( int retval, SharpPktHdr* hdr );
+    void scheduleSharpCompletion( MP::Functor* retFunc );
+    void processSharpCompletions();
+
     Output  m_dbg;
 	Output& dbg() { return m_dbg; }
 	FunctionSM& functionSM() { return m_os->getFunctionSM(); }
 	Hades*	    m_os;
+
+    std::unordered_map<SharpKey, SharpReqState, SharpKeyHash> m_sharpReqMap;
+    std::deque<MP::Functor*> m_sharpCompletionQ;
+    bool m_sharpCompletionScheduled = false;
 };
 
 } // namesapce Firefly

@@ -15,12 +15,103 @@
 
 #include <sst_config.h>
 
+#include <algorithm>
+
 #include "hadesMP.h"
 #include "funcSM/event.h"
+#include "sst/elements/hermes/functor.h"
 
 using namespace SST::Firefly;
 using namespace Hermes;
 using namespace Hermes::MP;
+
+uint32_t HadesMP::makeSharpTag( SharpType type, Communicator group, uint64_t collectiveId, uint64_t segId ) const
+{
+    const uint32_t typeBits = ( static_cast<uint32_t>( type ) & 0x1u ) << 27;
+    const uint32_t groupBits = ( group & 0xFu ) << 23;
+    const uint32_t collBits = ( static_cast<uint32_t>( collectiveId ) & 0x7FFu ) << 12;
+    const uint32_t segBits = static_cast<uint32_t>( segId ) & 0xFFFu;
+    return m_sharpTagBase | typeBits | groupBits | collBits | segBits;
+}
+
+bool HadesMP::handleSharpRecv( int retval, SharpRecvCtx* ctx )
+{
+    if ( retval != MP::SUCCESS ) {
+        dbg().debug(CALL_INFO,1,1,"sharp recv callback got retval=%d\n", retval );
+    }
+
+    const SharpPktHdr* hdr = reinterpret_cast<const SharpPktHdr*>( ctx->payload.data() );
+
+    if ( ctx->type == SharpType::Data ) {
+        SharpPktHdr* ackHdr = new SharpPktHdr();
+        ackHdr->sharpType = static_cast<uint32_t>( SharpType::Ack );
+        ackHdr->group = hdr->group;
+        ackHdr->collectiveId = hdr->collectiveId;
+        ackHdr->segId = hdr->segId;
+        ackHdr->segmentBytes = 0;
+        ackHdr->srcRank = ctx->key.rank;
+        ackHdr->dstRank = hdr->srcRank;
+
+        const uint32_t tag = makeSharpTag( SharpType::Ack, hdr->group, hdr->collectiveId, hdr->segId );
+        send( Hermes::MemAddr( ackHdr ), static_cast<uint32_t>( sizeof( SharpPktHdr ) ), MP::CHAR,
+            static_cast<RankID>( hdr->srcRank ), tag, hdr->group,
+            new ArgStatic_Functor<HadesMP, int, SharpPktHdr*, bool>( this, &HadesMP::handleSharpSendDone, ackHdr ) );
+    } else {
+        auto iter = m_sharpReqMap.find( ctx->key );
+        if ( iter != m_sharpReqMap.end() ) {
+            SharpReqState& req = iter->second;
+
+            if ( req.ackedSegments.insert( ctx->segId ).second ) {
+                ++req.ackCount;
+            }
+
+            if ( req.ackCount == req.expectedAcks ) {
+                MP::Functor* ret = req.retFunc;
+                m_sharpReqMap.erase( iter );
+                scheduleSharpCompletion( ret );
+            }
+        }
+    }
+
+    delete ctx->req;
+    delete ctx;
+    return true;
+}
+
+bool HadesMP::handleSharpSendDone( int retval, SharpPktHdr* hdr )
+{
+    if ( retval != MP::SUCCESS ) {
+        dbg().debug(CALL_INFO,1,1,"sharp send callback got retval=%d\n", retval );
+    }
+    delete hdr;
+    return true;
+}
+
+void HadesMP::scheduleSharpCompletion( MP::Functor* retFunc )
+{
+    if ( retFunc ) {
+        m_sharpCompletionQ.push_back( retFunc );
+    }
+
+    if ( m_sharpCompletionScheduled ) {
+        return;
+    }
+
+    m_sharpCompletionScheduled = true;
+    functionSM().start( FunctionSM::MakeProgress,
+        std::bind( &HadesMP::processSharpCompletions, this ),
+        new MakeProgressStartEvent() );
+}
+
+void HadesMP::processSharpCompletions()
+{
+    m_sharpCompletionScheduled = false;
+    while ( ! m_sharpCompletionQ.empty() ) {
+        MP::Functor* retFunc = m_sharpCompletionQ.front();
+        m_sharpCompletionQ.pop_front();
+        (*retFunc)( MP::SUCCESS );
+    }
+}
 
 
 HadesMP::HadesMP(ComponentId_t id, Params& params) :
@@ -123,14 +214,79 @@ void HadesMP::allreduce_sharp(const Hermes::MemAddr& mydata,
         ReductionOperation op, Communicator group,
         uint64_t collectiveId, Functor* retFunc)
 {
+    (void) mydata;
+    (void) result;
     (void) op;
-    dbg().debug(CALL_INFO,1,1,
-        "allreduce_sharp stub path: in=%p out=%p bytes=%" PRIu64 " group=%u collective_id=%" PRIu64 "\n",
-        &mydata, &result, bytes, group, collectiveId);
 
-    // Stub behavior for motif-path validation. No reuse of the legacy allreduce path.
-    if ( retFunc ) {
-        (*retFunc)( 0 );
+    Group* groupInfo = m_os->getInfo()->getGroup( group );
+    if ( nullptr == groupInfo ) {
+        dbg().fatal(CALL_INFO,-1,"allreduce_sharp invalid group=%u\n", group );
+    }
+
+    const int rank = groupInfo->getMyRank();
+    const int size = groupInfo->getSize();
+    const int dstRank = ( rank + 1 ) % size;
+    const int srcRank = ( rank + size - 1 ) % size;
+    const uint64_t numSegments = std::max<uint64_t>( 1, ( bytes + m_sharpSegmentBytes - 1 ) / m_sharpSegmentBytes );
+
+    SharpKey key{ rank, group, collectiveId };
+    SharpReqState req;
+    req.expectedAcks = numSegments;
+    req.retFunc = retFunc;
+    m_sharpReqMap[key] = std::move( req );
+
+    dbg().debug(CALL_INFO,1,1,
+        "allreduce_sharp issue rank=%d size=%d src=%d dst=%d bytes=%" PRIu64 " segs=%" PRIu64 " group=%u collective_id=%" PRIu64 "\n",
+        rank, size, srcRank, dstRank, bytes, numSegments, group, collectiveId);
+
+    for ( uint64_t segId = 0; segId < numSegments; ++segId ) {
+        const uint32_t segmentBytes = static_cast<uint32_t>( std::min<uint64_t>( m_sharpSegmentBytes, bytes - ( segId * m_sharpSegmentBytes ) ) );
+
+        auto* dataCtx = new SharpRecvCtx;
+        dataCtx->type = SharpType::Data;
+        dataCtx->key = SharpKey{ rank, group, collectiveId };
+        dataCtx->segId = segId;
+        dataCtx->payload.resize( sizeof( SharpPktHdr ) );
+        dataCtx->req = new MessageRequestBase;
+
+        irecv( Hermes::MemAddr( dataCtx->payload.data() ), static_cast<uint32_t>( dataCtx->payload.size() ), MP::CHAR,
+            static_cast<RankID>( srcRank ), makeSharpTag( SharpType::Data, group, collectiveId, segId ), group,
+            &dataCtx->req,
+            new ArgStatic_Functor<HadesMP, int, SharpRecvCtx*, bool>( this, &HadesMP::handleSharpRecv, dataCtx ) );
+
+        auto* ackCtx = new SharpRecvCtx;
+        ackCtx->type = SharpType::Ack;
+        ackCtx->key = key;
+        ackCtx->segId = segId;
+        ackCtx->payload.resize( sizeof( SharpPktHdr ) );
+        ackCtx->req = new MessageRequestBase;
+
+        irecv( Hermes::MemAddr( ackCtx->payload.data() ), static_cast<uint32_t>( ackCtx->payload.size() ), MP::CHAR,
+            static_cast<RankID>( dstRank ), makeSharpTag( SharpType::Ack, group, collectiveId, segId ), group,
+            &ackCtx->req,
+            new ArgStatic_Functor<HadesMP, int, SharpRecvCtx*, bool>( this, &HadesMP::handleSharpRecv, ackCtx ) );
+
+        SharpPktHdr* dataHdr = new SharpPktHdr();
+        dataHdr->sharpType = static_cast<uint32_t>( SharpType::Data );
+        dataHdr->group = group;
+        dataHdr->collectiveId = collectiveId;
+        dataHdr->segId = segId;
+        dataHdr->segmentBytes = segmentBytes;
+        dataHdr->srcRank = rank;
+        dataHdr->dstRank = dstRank;
+
+        send( Hermes::MemAddr( dataHdr ), static_cast<uint32_t>( sizeof( SharpPktHdr ) ), MP::CHAR,
+            static_cast<RankID>( dstRank ), makeSharpTag( SharpType::Data, group, collectiveId, segId ), group,
+            new ArgStatic_Functor<HadesMP, int, SharpPktHdr*, bool>( this, &HadesMP::handleSharpSendDone, dataHdr ) );
+    }
+
+    if ( bytes == 0 ) {
+        auto iter = m_sharpReqMap.find( key );
+        if ( iter != m_sharpReqMap.end() ) {
+            MP::Functor* ret = iter->second.retFunc;
+            m_sharpReqMap.erase( iter );
+            scheduleSharpCompletion( ret );
+        }
     }
 }
 
