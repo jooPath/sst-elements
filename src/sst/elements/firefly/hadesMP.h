@@ -256,6 +256,7 @@ class HadesMP : public MP::Interface
     static constexpr uint32_t m_sharpTagBase = 0x5A000000u;
 
     uint32_t makeSharpTag( SharpType type, MP::Communicator group, uint64_t collectiveId, uint64_t segId ) const;
+    void initSharpSelfLink();
     bool handleSharpRecv( int retval, SharpRecvCtx* ctx );
     bool handleSharpSendDone( int retval, SharpPktHdr* hdr );
     void scheduleSharpCompletion( MP::Functor* retFunc );

@@ -34,6 +34,13 @@ uint32_t HadesMP::makeSharpTag( HadesMP::SharpType type, MP::Communicator group,
     return m_sharpTagBase | typeBits | groupBits | collBits | segBits;
 }
 
+void HadesMP::initSharpSelfLink()
+{
+    m_sharpSelfLink = configureSelfLink( "sharpSelf", "1ns",
+        new Event::Handler2<HadesMP,&HadesMP::handleSharpSelfEvent>( this ) );
+    assert( m_sharpSelfLink );
+}
+
 bool HadesMP::handleSharpRecv( int retval, SharpRecvCtx* ctx )
 {
     if ( retval != MP::SUCCESS ) {
@@ -98,16 +105,9 @@ void HadesMP::scheduleSharpCompletion( MP::Functor* retFunc )
     }
 
     m_sharpCompletionScheduled = true;
-    if ( m_sharpSelfLink ) {
-        m_sharpSelfLink->send( 0, new SharpSelfEvent() );
-    } else {
-        // Defensive fallback: avoid a hard crash if self-link setup failed.
-        // This path is not expected in normal HadesMP construction.
-        processSharpCompletions();
-    }
     assert( m_sharpSelfLink );
-        std::bind( &HadesMP::processSharpCompletions, this ),
-        new MakeProgressStartEvent() );
+    m_sharpSelfLink->send( 0, new SharpSelfEvent() );
+    initSharpSelfLink();
 }
 
 void HadesMP::processSharpCompletions()
