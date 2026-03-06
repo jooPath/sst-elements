@@ -383,6 +383,16 @@ class NicCmdEvent : public NicCmdBaseEvent {
     void* key;
     int vn;
 
+    bool sharpIsSet;
+    bool sharpIsAck;
+    uint64_t sharpCollectiveId;
+    uint64_t sharpSegId;
+    uint32_t sharpSegmentBytes;
+    uint32_t sharpGroup;
+    uint32_t sharpOp;
+    int sharpSrcRank;
+    int sharpDstRank;
+
     NicCmdEvent( Type _type, int _vNic, int _node, int _tag,
             std::vector<IoVec>& _vec, void* _key, int vn = 0 ) :
         NicCmdBaseEvent(Msg),
@@ -392,8 +402,32 @@ class NicCmdEvent : public NicCmdBaseEvent {
         tag( _tag ),
         iovec( _vec ),
         key( _key ),
-        vn(vn)
+        vn(vn),
+        sharpIsSet(false),
+        sharpIsAck(false),
+        sharpCollectiveId(0),
+        sharpSegId(0),
+        sharpSegmentBytes(0),
+        sharpGroup(0),
+        sharpOp(0),
+        sharpSrcRank(-1),
+        sharpDstRank(-1)
     { }
+
+    void setSharpMeta(bool isAck, uint64_t collectiveId, uint64_t segId,
+                        uint32_t segmentBytes, uint32_t group,
+                        uint32_t op, int srcRank, int dstRank)
+    {
+        sharpIsSet = true;
+        sharpIsAck = isAck;
+        sharpCollectiveId = collectiveId;
+        sharpSegId = segId;
+        sharpSegmentBytes = segmentBytes;
+        sharpGroup = group;
+        sharpOp = op;
+        sharpSrcRank = srcRank;
+        sharpDstRank = dstRank;
+    }
 
     NotSerializable(NicCmdEvent)
 };

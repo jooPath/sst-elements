@@ -34,6 +34,15 @@ class SendEntryBase {
     virtual size_t hdrSize() = 0;
     virtual void copyOut( Output& dbg, int numBytes,
             FireflyNetworkEvent& event, std::vector<MemOp>& vec ) = 0;
+    virtual bool isSharp() { return false; }
+    virtual bool sharpIsAck() { return false; }
+    virtual uint64_t sharpCollectiveId() { return 0; }
+    virtual uint64_t sharpSegId() { return 0; }
+    virtual uint32_t sharpSegmentBytes() { return 0; }
+    virtual uint32_t sharpGroup() { return 0; }
+    virtual uint32_t sharpOp() { return 0; }
+    virtual int sharpSrcRank() { return -1; }
+    virtual int sharpDstRank() { return -1; }
     virtual bool shouldDelete() { return true; }
     bool isCtrl() { return m_isCtrl; }
     bool isAck() { return m_isAck; }
@@ -82,6 +91,15 @@ class CmdSendEntry: public SendEntryBase, public EntryBase {
     int dest()          { return m_cmd->node; }
     void* hdr()         { return &m_hdr; }
     size_t hdrSize()    { return sizeof(m_hdr); }
+    bool isSharp()      { return m_cmd->sharpIsSet; }
+    bool sharpIsAck()   { return m_cmd->sharpIsAck; }
+    uint64_t sharpCollectiveId() { return m_cmd->sharpCollectiveId; }
+    uint64_t sharpSegId() { return m_cmd->sharpSegId; }
+    uint32_t sharpSegmentBytes() { return m_cmd->sharpSegmentBytes; }
+    uint32_t sharpGroup() { return m_cmd->sharpGroup; }
+    uint32_t sharpOp() { return m_cmd->sharpOp; }
+    int sharpSrcRank() { return m_cmd->sharpSrcRank; }
+    int sharpDstRank() { return m_cmd->sharpDstRank; }
 
   private:
     MatchMsgHdr         m_hdr;
@@ -174,4 +192,47 @@ class PutOrgnEntry : public MsgSendEntry, public EntryBase {
     MemRgnEntry*        m_memRgn;
     RdmaMsgHdr          m_hdr;
     int                 m_vn;
+};
+
+class SharpAckSendEntry : public MsgSendEntry {
+  public:
+    SharpAckSendEntry( int local_vNic, int streamNum, int dst_node, int dst_vNic,
+            int vn, uint64_t collectiveId, uint64_t segId, uint32_t group,
+            uint32_t op, int srcRank, int dstRank ) :
+        MsgSendEntry( local_vNic, streamNum, dst_node, dst_vNic ),
+        m_vn(vn), m_collectiveId(collectiveId), m_segId(segId), m_group(group),
+        m_op(op), m_srcRank(srcRank), m_dstRank(dstRank)
+    {
+        m_hdr.len = 0;
+        m_hdr.tag = 0;
+        m_isCtrl = true;
+    }
+
+    bool isDone() { return true; }
+    void copyOut( Output&, int, FireflyNetworkEvent&, std::vector<MemOp>& ) {}
+    size_t totalBytes() { return 0; }
+    MsgHdr::Op getOp() { return MsgHdr::Msg; }
+    int vn() { return m_vn; }
+    void* hdr() { return &m_hdr; }
+    size_t hdrSize() { return sizeof(m_hdr); }
+
+    bool isSharp() { return true; }
+    bool sharpIsAck() { return true; }
+    uint64_t sharpCollectiveId() { return m_collectiveId; }
+    uint64_t sharpSegId() { return m_segId; }
+    uint32_t sharpSegmentBytes() { return 0; }
+    uint32_t sharpGroup() { return m_group; }
+    uint32_t sharpOp() { return m_op; }
+    int sharpSrcRank() { return m_srcRank; }
+    int sharpDstRank() { return m_dstRank; }
+
+  private:
+    MatchMsgHdr m_hdr;
+    int m_vn;
+    uint64_t m_collectiveId;
+    uint64_t m_segId;
+    uint32_t m_group;
+    uint32_t m_op;
+    int m_srcRank;
+    int m_dstRank;
 };

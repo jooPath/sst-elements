@@ -200,6 +200,11 @@ class HadesMP : public MP::Interface
 
     virtual void comm_destroy( MP::Communicator, MP::Functor* );
 
+    static void sharpNotifyAckReceived( int dstRank, uint64_t collectiveId,
+                                        uint64_t segId );
+    static void sharpNotifyDataReceived( int dstRank, uint64_t collectiveId,
+                                         uint64_t segId );
+
   private:
     Output  m_dbg;
 	Output& dbg() { return m_dbg; }

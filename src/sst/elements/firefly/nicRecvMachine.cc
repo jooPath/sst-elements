@@ -16,6 +16,7 @@
 #include "sst_config.h"
 
 #include "nic.h"
+#include "hadesMP.h"
 
 using namespace SST;
 using namespace SST::Firefly;
@@ -24,6 +25,28 @@ void Nic::RecvMachine::processPkt( FireflyNetworkEvent* ev ) {
 
 	m_dbg.debug(CALL_INFO,1,NIC_DBG_RECV_MACHINE," got a network pkt from node=%d pid=%d for pid=%d stream=%d size=%zu\n",
                         ev->getSrcNode(),ev->getSrcPid(), ev->getDestPid(), ev->getSrcStream(), ev->bufSize() );
+
+    if ( ev->isSharp() ) {
+        m_dbg.debug(CALL_INFO,1,NIC_DBG_RECV_MACHINE,
+            "got sharp packet: isAck=%d collectiveId=%" PRIu64 " segId=%" PRIu64 " srcRank=%d dstRank=%d\n",
+            ev->sharpIsAck() ? 1 : 0, ev->sharpCollectiveId(), ev->sharpSegId(),
+            ev->sharpSrcRank(), ev->sharpDstRank() );
+
+        if ( ev->sharpIsAck() ) {
+            HadesMP::sharpNotifyAckReceived( ev->sharpDstRank(), ev->sharpCollectiveId(), ev->sharpSegId() );
+        } else {
+            HadesMP::sharpNotifyDataReceived( ev->sharpDstRank(), ev->sharpCollectiveId(), ev->sharpSegId() );
+            m_nic.qSendEntry( new SharpAckSendEntry(
+                ev->getDestPid(), m_nic.getSendStreamNum( ev->getDestPid() ),
+                ev->getSrcNode(), ev->getSrcPid(), ev->sharpVn(),
+                ev->sharpCollectiveId(), ev->sharpSegId(),
+                ev->sharpGroup(), ev->sharpOp(),
+                ev->sharpDstRank(), ev->sharpSrcRank() ) );
+        }
+
+        delete ev;
+        return;
+    }
 
     if ( ev->isCtrl() ) {
 		m_dbg.debug(CALL_INFO,1,NIC_DBG_RECV_MACHINE,"got a control message\n");

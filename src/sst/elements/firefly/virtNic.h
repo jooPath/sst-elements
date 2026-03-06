@@ -179,6 +179,10 @@ class VirtNic : public SST::SubComponent {
 
     void dmaRecv( int src, int tag, std::vector<IoVec>& vec, void* key );
     void pioSend( int vn, int dest, int tag, std::vector<IoVec>& vec, void* key  );
+    void pioSendSharp( int vn, int dest, int tag, std::vector<IoVec>& vec, void* key,
+            bool isAck, uint64_t collectiveId, uint64_t segId,
+            uint32_t segmentBytes, uint32_t group, uint32_t op,
+            int srcRank, int dstRank );
     void get( int node, int tag, std::vector<IoVec>& vec, void* key );
     void regMem( int node, int tag, std::vector<IoVec>& vec, void *key );
 

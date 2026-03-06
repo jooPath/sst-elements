@@ -45,6 +45,13 @@ void Nic::SendMachine::streamInit( SendEntryBase* entry )
         ev->setCtrl();
     }
 
+    if ( entry->isSharp() ) {
+        ev->setSharpMeta( entry->sharpIsAck(), entry->sharpCollectiveId(),
+            entry->sharpSegId(), entry->sharpSegmentBytes(),
+            entry->sharpGroup(), entry->sharpOp(), entry->sharpSrcRank(),
+            entry->sharpDstRank(), entry->vn() );
+    }
+
     ev->bufAppend( &hdr, sizeof(hdr) );
     ev->bufAppend( entry->hdr(), entry->hdrSize() );
 
@@ -57,6 +64,12 @@ void Nic::SendMachine::getPayload( SendEntryBase* entry, FireflyNetworkEvent* ev
     ev->setDestPid( entry->dst_vNic() );
     ev->setSrcPid( pid );
     ev->setSrcStream( entry->streamNum() );
+    if ( entry->isSharp() ) {
+        ev->setSharpMeta( entry->sharpIsAck(), entry->sharpCollectiveId(),
+            entry->sharpSegId(), entry->sharpSegmentBytes(),
+            entry->sharpGroup(), entry->sharpOp(), entry->sharpSrcRank(),
+            entry->sharpDstRank(), entry->vn() );
+    }
     if ( ! m_inQ->isFull() ) {
 	    std::vector< MemOp >* vec = new std::vector< MemOp >;
         entry->copyOut( m_dbg, m_packetSizeInBytes, *ev, *vec );

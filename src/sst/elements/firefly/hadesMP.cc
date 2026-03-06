@@ -17,10 +17,35 @@
 
 #include "hadesMP.h"
 #include "funcSM/event.h"
+#include "virtNic.h"
+
+#include <algorithm>
+#include <unordered_map>
 
 using namespace SST::Firefly;
 using namespace Hermes;
 using namespace Hermes::MP;
+
+namespace {
+
+struct SharpReqState {
+    MP::Functor* retFunc;
+    uint64_t expectedAcks;
+    uint64_t ackCount;
+    uint64_t dataCount;
+    bool done;
+};
+
+using SharpKey = uint64_t;
+
+SharpKey makeSharpKey(int rank, uint64_t collectiveId)
+{
+    return (static_cast<uint64_t>(static_cast<uint32_t>(rank)) << 32) ^ collectiveId;
+}
+
+std::unordered_map<SharpKey, SharpReqState> g_sharpReqMap;
+
+}
 
 
 HadesMP::HadesMP(ComponentId_t id, Params& params) :
@@ -123,15 +148,100 @@ void HadesMP::allreduce_sharp(const Hermes::MemAddr& mydata,
         ReductionOperation op, Communicator group,
         uint64_t collectiveId, Functor* retFunc)
 {
-    (void) op;
-    dbg().debug(CALL_INFO,1,1,
-        "allreduce_sharp stub path: in=%p out=%p bytes=%" PRIu64 " group=%u collective_id=%" PRIu64 "\n",
-        &mydata, &result, bytes, group, collectiveId);
+    (void) result;
 
-    // Stub behavior for motif-path validation. No reuse of the legacy allreduce path.
-    if ( retFunc ) {
-        (*retFunc)( 0 );
+    Group* grp = m_os->getInfo()->getGroup( group );
+    if ( !grp ) {
+        dbg().fatal(CALL_INFO, -1, "allreduce_sharp: invalid group=%u\n", group);
     }
+
+    const int myRank = grp->getMyRank();
+    const int size = grp->getSize();
+    if ( size <= 0 ) {
+        dbg().fatal(CALL_INFO, -1, "allreduce_sharp: invalid group size=%d\n", size);
+    }
+
+    const int dstRank = ( myRank + 1 ) % size;
+    const int dstNode = grp->getMapping( dstRank );
+
+    constexpr uint64_t kSharpMaxSegBytes = 1024;
+    const uint64_t totalSegs = ( bytes + kSharpMaxSegBytes - 1 ) / kSharpMaxSegBytes;
+
+    dbg().debug(CALL_INFO,1,1,
+        "allreduce_sharp transport-validation: srcRank=%d dstRank=%d dstNode=%d bytes=%" PRIu64 " segs=%" PRIu64 " group=%u collective_id=%" PRIu64 "\n",
+        myRank, dstRank, dstNode, bytes, totalSegs, group, collectiveId);
+
+    SharpReqState& req = g_sharpReqMap[ makeSharpKey( myRank, collectiveId ) ];
+    req.retFunc = retFunc;
+    req.expectedAcks = totalSegs;
+    req.ackCount = 0;
+    req.dataCount = 0;
+    req.done = false;
+
+    if ( 0 == totalSegs ) {
+        req.done = true;
+        if ( req.retFunc ) {
+            (*req.retFunc)(0);
+        }
+        return;
+    }
+
+    uint64_t offset = 0;
+    uint64_t segId = 0;
+    while ( offset < bytes ) {
+        const uint32_t segBytes = static_cast<uint32_t>( std::min<uint64_t>(kSharpMaxSegBytes, bytes - offset) );
+
+        std::vector<IoVec> vec(1);
+        vec[0].addr = mydata.offset( offset );
+        vec[0].len = segBytes;
+
+        m_os->getNic()->pioSendSharp( 0, dstNode, 0, vec, NULL,
+            false, collectiveId, segId, segBytes,
+            static_cast<uint32_t>(group), static_cast<uint32_t>(op ? op->type : 0),
+            myRank, dstRank );
+
+        offset += segBytes;
+        ++segId;
+    }
+}
+
+void HadesMP::sharpNotifyAckReceived( int dstRank, uint64_t collectiveId,
+                                        uint64_t segId )
+{
+    auto iter = g_sharpReqMap.find( makeSharpKey(dstRank, collectiveId) );
+    if ( iter == g_sharpReqMap.end() ) {
+        return;
+    }
+
+    SharpReqState& req = iter->second;
+    if ( req.done ) {
+        return;
+    }
+
+    ++req.ackCount;
+
+    if ( req.ackCount >= req.expectedAcks ) {
+        req.done = true;
+        if ( req.retFunc ) {
+            (*req.retFunc)(0);
+        }
+        g_sharpReqMap.erase( iter );
+        return;
+    }
+
+    (void) segId;
+}
+
+void HadesMP::sharpNotifyDataReceived( int dstRank, uint64_t collectiveId,
+                                         uint64_t segId )
+{
+    auto iter = g_sharpReqMap.find( makeSharpKey(dstRank, collectiveId) );
+    if ( iter == g_sharpReqMap.end() ) {
+        return;
+    }
+
+    ++iter->second.dataCount;
+    (void) segId;
 }
 
 void HadesMP::reduce(const Hermes::MemAddr& mydata,

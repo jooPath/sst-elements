@@ -30,13 +30,18 @@ class FireflyNetworkEvent : public Event {
 
   public:
 
-    FireflyNetworkEvent( ) : offset(0), bufLen(0), m_isHdr(false), m_isTail(false), m_isCtrl(false), pktOverhead(0) {
+    FireflyNetworkEvent( ) : offset(0), bufLen(0), m_isHdr(false), m_isTail(false), m_isCtrl(false),
+            m_isSharp(false), m_sharpIsAck(false), m_sharpCollectiveId(0), m_sharpSegId(0),
+            m_sharpSegmentBytes(0), m_sharpGroup(0), m_sharpOp(0), m_sharpSrcRank(-1), m_sharpDstRank(-1),
+            m_sharpVn(0), pktOverhead(0) {
         buf.reserve( 1000 );
         assert( 0 == buf.size() );
     }
 
     FireflyNetworkEvent( int pktOverhead, size_t reserve = 1000 ) : offset(0), bufLen(0),
-            m_isHdr(false), m_isTail(false), m_isCtrl(false), pktOverhead(pktOverhead) {
+            m_isHdr(false), m_isTail(false), m_isCtrl(false), m_isSharp(false), m_sharpIsAck(false),
+            m_sharpCollectiveId(0), m_sharpSegId(0), m_sharpSegmentBytes(0), m_sharpGroup(0), m_sharpOp(0),
+            m_sharpSrcRank(-1), m_sharpDstRank(-1), m_sharpVn(0), pktOverhead(pktOverhead) {
         buf.reserve( reserve );
         assert( 0 == buf.size() );
     }
@@ -48,6 +53,31 @@ class FireflyNetworkEvent : public Event {
     bool isHdr() { return m_isHdr; }
     void setTail() { m_isTail = true; }
     bool isTail() { return m_isTail; }
+    void setSharpMeta(bool isAck, uint64_t collectiveId, uint64_t segId,
+                        uint32_t segmentBytes, uint32_t group, uint32_t op,
+                        int srcRank, int dstRank, int vn)
+    {
+        m_isSharp = true;
+        m_sharpIsAck = isAck;
+        m_sharpCollectiveId = collectiveId;
+        m_sharpSegId = segId;
+        m_sharpSegmentBytes = segmentBytes;
+        m_sharpGroup = group;
+        m_sharpOp = op;
+        m_sharpSrcRank = srcRank;
+        m_sharpDstRank = dstRank;
+        m_sharpVn = vn;
+    }
+    bool isSharp() { return m_isSharp; }
+    bool sharpIsAck() { return m_sharpIsAck; }
+    uint64_t sharpCollectiveId() { return m_sharpCollectiveId; }
+    uint64_t sharpSegId() { return m_sharpSegId; }
+    uint32_t sharpSegmentBytes() { return m_sharpSegmentBytes; }
+    uint32_t sharpGroup() { return m_sharpGroup; }
+    uint32_t sharpOp() { return m_sharpOp; }
+    int sharpSrcRank() { return m_sharpSrcRank; }
+    int sharpDstRank() { return m_sharpDstRank; }
+    int sharpVn() { return m_sharpVn; }
     int calcPayloadSizeInBits() { return payloadSize() * 8; }
     int payloadSize() { return pktOverhead + bufSize(); }
 
@@ -114,6 +144,16 @@ class FireflyNetworkEvent : public Event {
         m_isHdr = me->m_isHdr;
         m_isTail = me->m_isTail;
         m_isCtrl = me->m_isCtrl;
+        m_isSharp = me->m_isSharp;
+        m_sharpIsAck = me->m_sharpIsAck;
+        m_sharpCollectiveId = me->m_sharpCollectiveId;
+        m_sharpSegId = me->m_sharpSegId;
+        m_sharpSegmentBytes = me->m_sharpSegmentBytes;
+        m_sharpGroup = me->m_sharpGroup;
+        m_sharpOp = me->m_sharpOp;
+        m_sharpSrcRank = me->m_sharpSrcRank;
+        m_sharpDstRank = me->m_sharpDstRank;
+        m_sharpVn = me->m_sharpVn;
         offset = me->offset;
         pktOverhead = me->pktOverhead;
     }
@@ -130,6 +170,16 @@ class FireflyNetworkEvent : public Event {
         m_isHdr = me.m_isHdr;
         m_isTail = me.m_isTail;
         m_isCtrl = me.m_isCtrl;
+        m_isSharp = me.m_isSharp;
+        m_sharpIsAck = me.m_sharpIsAck;
+        m_sharpCollectiveId = me.m_sharpCollectiveId;
+        m_sharpSegId = me.m_sharpSegId;
+        m_sharpSegmentBytes = me.m_sharpSegmentBytes;
+        m_sharpGroup = me.m_sharpGroup;
+        m_sharpOp = me.m_sharpOp;
+        m_sharpSrcRank = me.m_sharpSrcRank;
+        m_sharpDstRank = me.m_sharpDstRank;
+        m_sharpVn = me.m_sharpVn;
         offset = me.offset;
         pktOverhead = me.pktOverhead;
     }
@@ -160,6 +210,16 @@ class FireflyNetworkEvent : public Event {
     bool            m_isHdr;
     bool            m_isTail;
     bool            m_isCtrl;
+    bool            m_isSharp;
+    bool            m_sharpIsAck;
+    uint64_t        m_sharpCollectiveId;
+    uint64_t        m_sharpSegId;
+    uint32_t        m_sharpSegmentBytes;
+    uint32_t        m_sharpGroup;
+    uint32_t        m_sharpOp;
+    int             m_sharpSrcRank;
+    int             m_sharpDstRank;
+    int             m_sharpVn;
     int             pktOverhead;
 
     size_t          offset;
@@ -181,6 +241,16 @@ class FireflyNetworkEvent : public Event {
         SST_SER(m_isHdr);
         SST_SER(m_isTail);
         SST_SER(m_isCtrl);
+        SST_SER(m_isSharp);
+        SST_SER(m_sharpIsAck);
+        SST_SER(m_sharpCollectiveId);
+        SST_SER(m_sharpSegId);
+        SST_SER(m_sharpSegmentBytes);
+        SST_SER(m_sharpGroup);
+        SST_SER(m_sharpOp);
+        SST_SER(m_sharpSrcRank);
+        SST_SER(m_sharpDstRank);
+        SST_SER(m_sharpVn);
     }
 
     ImplementSerializable(SST::Firefly::FireflyNetworkEvent);

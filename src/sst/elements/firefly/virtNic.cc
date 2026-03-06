@@ -15,6 +15,7 @@
 
 #include "sst_config.h"
 
+#include <inttypes.h>
 #include <sst/core/link.h>
 #include <sst/core/params.h>
 #include "virtNic.h"
@@ -159,6 +160,21 @@ void VirtNic::pioSend( int vn, int dest, int tag, std::vector<IoVec>& vec, void*
     m_dbg.debug(CALL_INFO,2,0,"dest=%d\n",dest);
     m_toNicLink->send(calcDelay(), new NicCmdEvent( NicCmdEvent::PioSend,
 			calcCoreId(dest), calcRealNicId(dest), tag, vec, key, vn ) );
+}
+
+void VirtNic::pioSendSharp( int vn, int dest, int tag, std::vector<IoVec>& vec, void* key,
+            bool isAck, uint64_t collectiveId, uint64_t segId,
+            uint32_t segmentBytes, uint32_t group, uint32_t op,
+            int srcRank, int dstRank )
+{
+    m_dbg.debug(CALL_INFO,2,0,"dest=%d collectiveId=%" PRIu64 " segId=%" PRIu64 " isAck=%d\n",
+        dest, collectiveId, segId, isAck ? 1 : 0 );
+
+    NicCmdEvent* ev = new NicCmdEvent( NicCmdEvent::PioSend,
+            calcCoreId(dest), calcRealNicId(dest), tag, vec, key, vn );
+    ev->setSharpMeta( isAck, collectiveId, segId, segmentBytes,
+                        group, op, srcRank, dstRank );
+    m_toNicLink->send(calcDelay(), ev );
 }
 
 void VirtNic::get( int node, int tag, std::vector<IoVec>& vec, void* key )
