@@ -98,6 +98,11 @@ class HadesMP : public MP::Interface
         MP::PayloadDataType dtype, MP::ReductionOperation op,
         MP::Communicator group, MP::Functor*);
 
+    virtual void allreduce_sharp(const Hermes::MemAddr&,
+        const Hermes::MemAddr& result, uint64_t bytes,
+        MP::ReductionOperation op, MP::Communicator group,
+        uint64_t collectiveId, MP::Functor*);
+
     virtual void reduce(const Hermes::MemAddr&,
 		const Hermes::MemAddr& result,
         uint32_t count, MP::PayloadDataType dtype,
