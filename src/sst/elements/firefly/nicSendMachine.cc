@@ -45,11 +45,12 @@ void Nic::SendMachine::streamInit( SendEntryBase* entry )
         ev->setCtrl();
     }
 
-    if ( entry->isSharp() ) {
-        ev->setSharpMeta( entry->sharpIsAck(), entry->sharpCollectiveId(),
-            entry->sharpSegId(), entry->sharpSegmentBytes(),
-            entry->sharpGroup(), entry->sharpOp(), entry->sharpSrcRank(),
-            entry->sharpDstRank(), entry->vn() );
+    SendEntryBase::SharpMeta sharpMeta;
+    if ( entry->getSharpMeta( sharpMeta ) ) {
+        ev->setSharpMeta( sharpMeta.isAck, sharpMeta.collectiveId,
+            sharpMeta.segId, sharpMeta.segmentBytes,
+            sharpMeta.group, sharpMeta.op, sharpMeta.srcRank,
+            sharpMeta.dstRank, entry->vn() );
     }
 
     ev->bufAppend( &hdr, sizeof(hdr) );
@@ -64,11 +65,12 @@ void Nic::SendMachine::getPayload( SendEntryBase* entry, FireflyNetworkEvent* ev
     ev->setDestPid( entry->dst_vNic() );
     ev->setSrcPid( pid );
     ev->setSrcStream( entry->streamNum() );
-    if ( entry->isSharp() ) {
-        ev->setSharpMeta( entry->sharpIsAck(), entry->sharpCollectiveId(),
-            entry->sharpSegId(), entry->sharpSegmentBytes(),
-            entry->sharpGroup(), entry->sharpOp(), entry->sharpSrcRank(),
-            entry->sharpDstRank(), entry->vn() );
+    SendEntryBase::SharpMeta sharpMeta;
+    if ( entry->getSharpMeta( sharpMeta ) ) {
+        ev->setSharpMeta( sharpMeta.isAck, sharpMeta.collectiveId,
+            sharpMeta.segId, sharpMeta.segmentBytes,
+            sharpMeta.group, sharpMeta.op, sharpMeta.srcRank,
+            sharpMeta.dstRank, entry->vn() );
     }
     if ( ! m_inQ->isFull() ) {
 	    std::vector< MemOp >* vec = new std::vector< MemOp >;

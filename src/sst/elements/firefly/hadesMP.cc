@@ -192,7 +192,8 @@ void HadesMP::allreduce_sharp(const Hermes::MemAddr& mydata,
         const uint32_t segBytes = static_cast<uint32_t>( std::min<uint64_t>(kSharpMaxSegBytes, bytes - offset) );
 
         std::vector<IoVec> vec(1);
-        vec[0].addr = mydata.offset( offset );
+        Hermes::MemAddr segAddr = mydata;
+        vec[0].addr = segAddr.offset( offset );
         vec[0].len = segBytes;
 
         m_os->getNic()->pioSendSharp( 0, dstNode, 0, vec, NULL,

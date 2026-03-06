@@ -15,6 +15,17 @@
 
 class SendEntryBase {
   public:
+    struct SharpMeta {
+        bool isAck;
+        uint64_t collectiveId;
+        uint64_t segId;
+        uint32_t segmentBytes;
+        uint32_t group;
+        uint32_t op;
+        int srcRank;
+        int dstRank;
+    };
+
     SendEntryBase( int local_vNic, int streamNum ) :
         m_local_vNic( local_vNic ), m_streamNum(streamNum), m_isCtrl(false), m_isAck(false)
     { }
@@ -34,15 +45,7 @@ class SendEntryBase {
     virtual size_t hdrSize() = 0;
     virtual void copyOut( Output& dbg, int numBytes,
             FireflyNetworkEvent& event, std::vector<MemOp>& vec ) = 0;
-    virtual bool isSharp() { return false; }
-    virtual bool sharpIsAck() { return false; }
-    virtual uint64_t sharpCollectiveId() { return 0; }
-    virtual uint64_t sharpSegId() { return 0; }
-    virtual uint32_t sharpSegmentBytes() { return 0; }
-    virtual uint32_t sharpGroup() { return 0; }
-    virtual uint32_t sharpOp() { return 0; }
-    virtual int sharpSrcRank() { return -1; }
-    virtual int sharpDstRank() { return -1; }
+    virtual bool getSharpMeta( SharpMeta& ) { return false; }
     virtual bool shouldDelete() { return true; }
     bool isCtrl() { return m_isCtrl; }
     bool isAck() { return m_isAck; }
@@ -91,15 +94,20 @@ class CmdSendEntry: public SendEntryBase, public EntryBase {
     int dest()          { return m_cmd->node; }
     void* hdr()         { return &m_hdr; }
     size_t hdrSize()    { return sizeof(m_hdr); }
-    bool isSharp()      { return m_cmd->sharpIsSet; }
-    bool sharpIsAck()   { return m_cmd->sharpIsAck; }
-    uint64_t sharpCollectiveId() { return m_cmd->sharpCollectiveId; }
-    uint64_t sharpSegId() { return m_cmd->sharpSegId; }
-    uint32_t sharpSegmentBytes() { return m_cmd->sharpSegmentBytes; }
-    uint32_t sharpGroup() { return m_cmd->sharpGroup; }
-    uint32_t sharpOp() { return m_cmd->sharpOp; }
-    int sharpSrcRank() { return m_cmd->sharpSrcRank; }
-    int sharpDstRank() { return m_cmd->sharpDstRank; }
+    bool getSharpMeta( SharpMeta& meta ) {
+        if ( ! m_cmd->sharpIsSet ) {
+            return false;
+        }
+        meta.isAck = m_cmd->sharpIsAck;
+        meta.collectiveId = m_cmd->sharpCollectiveId;
+        meta.segId = m_cmd->sharpSegId;
+        meta.segmentBytes = m_cmd->sharpSegmentBytes;
+        meta.group = m_cmd->sharpGroup;
+        meta.op = m_cmd->sharpOp;
+        meta.srcRank = m_cmd->sharpSrcRank;
+        meta.dstRank = m_cmd->sharpDstRank;
+        return true;
+    }
 
   private:
     MatchMsgHdr         m_hdr;
@@ -216,15 +224,17 @@ class SharpAckSendEntry : public MsgSendEntry {
     void* hdr() { return &m_hdr; }
     size_t hdrSize() { return sizeof(m_hdr); }
 
-    bool isSharp() { return true; }
-    bool sharpIsAck() { return true; }
-    uint64_t sharpCollectiveId() { return m_collectiveId; }
-    uint64_t sharpSegId() { return m_segId; }
-    uint32_t sharpSegmentBytes() { return 0; }
-    uint32_t sharpGroup() { return m_group; }
-    uint32_t sharpOp() { return m_op; }
-    int sharpSrcRank() { return m_srcRank; }
-    int sharpDstRank() { return m_dstRank; }
+    bool getSharpMeta( SharpMeta& meta ) {
+        meta.isAck = true;
+        meta.collectiveId = m_collectiveId;
+        meta.segId = m_segId;
+        meta.segmentBytes = 0;
+        meta.group = m_group;
+        meta.op = m_op;
+        meta.srcRank = m_srcRank;
+        meta.dstRank = m_dstRank;
+        return true;
+    }
 
   private:
     MatchMsgHdr m_hdr;
