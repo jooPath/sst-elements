@@ -89,6 +89,10 @@ char pymerlin_topo_polarstar[] = {
 #include "topology/pymerlin-topo-polarstar.inc"
     0x00};
 
+char pymerlin_topo_gpu[] = {
+#include "topology/pymerlin-topo-gpu.inc"
+    0x00};
+
 
 class MerlinPyModule : public SSTElementPythonModule {
 public:
@@ -107,6 +111,7 @@ public:
         primary_module->addSubModule("topology",pymerlin_topo_mesh,"topology/pymerlin-topo-mesh.py");
         primary_module->addSubModule("topology",pymerlin_topo_polarfly,"topology/pymerlin-topo-polarfly.py");
         primary_module->addSubModule("topology",pymerlin_topo_polarstar,"topology/pymerlin-topo-polarstar.py");
+        primary_module->addSubModule("topology",pymerlin_topo_gpu,"topology/pymerlin-topo-gpu.py");
     }
 
     SST_ELI_REGISTER_PYTHON_MODULE(
@@ -140,4 +145,3 @@ public:
 //         NULL // generators,
 //     };
 // }
-
