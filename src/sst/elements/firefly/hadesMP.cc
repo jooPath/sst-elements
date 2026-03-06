@@ -25,7 +25,7 @@ using namespace SST::Firefly;
 using namespace Hermes;
 using namespace Hermes::MP;
 
-uint32_t HadesMP::makeSharpTag( SharpType type, Communicator group, uint64_t collectiveId, uint64_t segId ) const
+uint32_t HadesMP::makeSharpTag( HadesMP::SharpType type, MP::Communicator group, uint64_t collectiveId, uint64_t segId ) const
 {
     const uint32_t typeBits = ( static_cast<uint32_t>( type ) & 0x1u ) << 27;
     const uint32_t groupBits = ( group & 0xFu ) << 23;
