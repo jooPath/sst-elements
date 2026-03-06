@@ -19,6 +19,9 @@
 
 #include <sst/core/params.h>
 
+#include <unordered_map>
+#include <vector>
+
 #include "sst/elements/hermes/msgapi.h"
 #include "hades.h"
 #include "functionSM.h"
@@ -51,7 +54,7 @@ class HadesMP : public MP::Interface
     )
   public:
     HadesMP(ComponentId_t, Params&);
-    ~HadesMP() {}
+    ~HadesMP();
 
     virtual std::string getName() { return "HadesMP"; }
     virtual std::string getType() { return "mpi"; }
@@ -201,11 +204,29 @@ class HadesMP : public MP::Interface
     virtual void comm_destroy( MP::Communicator, MP::Functor* );
 
     static void sharpNotifyAckReceived( int dstRank, uint64_t collectiveId,
-                                        uint64_t segId );
+                                        uint64_t segId, MP::Communicator group );
     static void sharpNotifyDataReceived( int dstRank, uint64_t collectiveId,
-                                         uint64_t segId );
+                                         uint64_t segId, MP::Communicator group );
 
   private:
+    struct SharpReqState {
+        MP::Functor* retFunc;
+        uint64_t expectedAcks;
+        uint64_t ackCount;
+        uint64_t dataCount;
+        bool done;
+    };
+
+    using SharpKey = uint64_t;
+
+    SharpKey makeSharpKey( int rank, MP::Communicator group, uint64_t collectiveId ) const;
+    bool sharpNotifyAckReceivedLocal( int dstRank, uint64_t collectiveId,
+                                        uint64_t segId, MP::Communicator group );
+    bool sharpNotifyDataReceivedLocal( int dstRank, uint64_t collectiveId,
+                                         uint64_t segId, MP::Communicator group );
+
+    std::unordered_map<SharpKey, SharpReqState> m_sharpReqMap;
+    static std::vector<HadesMP*> s_instances;
     Output  m_dbg;
 	Output& dbg() { return m_dbg; }
 	FunctionSM& functionSM() { return m_os->getFunctionSM(); }

@@ -20,37 +20,26 @@
 #include "virtNic.h"
 
 #include <algorithm>
-#include <unordered_map>
 
 using namespace SST::Firefly;
 using namespace Hermes;
 using namespace Hermes::MP;
 
-namespace {
-
-struct SharpReqState {
-    MP::Functor* retFunc;
-    uint64_t expectedAcks;
-    uint64_t ackCount;
-    uint64_t dataCount;
-    bool done;
-};
-
-using SharpKey = uint64_t;
-
-SharpKey makeSharpKey(int rank, uint64_t collectiveId)
-{
-    return (static_cast<uint64_t>(static_cast<uint32_t>(rank)) << 32) ^ collectiveId;
-}
-
-std::unordered_map<SharpKey, SharpReqState> g_sharpReqMap;
-
-}
+std::vector<HadesMP*> HadesMP::s_instances;
 
 
 HadesMP::HadesMP(ComponentId_t id, Params& params) :
     Interface(id), m_os(NULL)
 {
+    s_instances.push_back(this);
+}
+
+HadesMP::~HadesMP()
+{
+    auto it = std::find( s_instances.begin(), s_instances.end(), this );
+    if ( it != s_instances.end() ) {
+        s_instances.erase( it );
+    }
 }
 
 #if PRINT_STATUS
@@ -171,7 +160,7 @@ void HadesMP::allreduce_sharp(const Hermes::MemAddr& mydata,
         "allreduce_sharp transport-validation: srcRank=%d dstRank=%d dstNode=%d bytes=%" PRIu64 " segs=%" PRIu64 " group=%u collective_id=%" PRIu64 "\n",
         myRank, dstRank, dstNode, bytes, totalSegs, group, collectiveId);
 
-    SharpReqState& req = g_sharpReqMap[ makeSharpKey( myRank, collectiveId ) ];
+    SharpReqState& req = m_sharpReqMap[ makeSharpKey( myRank, group, collectiveId ) ];
     req.retFunc = retFunc;
     req.expectedAcks = totalSegs;
     req.ackCount = 0;
@@ -206,17 +195,34 @@ void HadesMP::allreduce_sharp(const Hermes::MemAddr& mydata,
     }
 }
 
-void HadesMP::sharpNotifyAckReceived( int dstRank, uint64_t collectiveId,
-                                        uint64_t segId )
+HadesMP::SharpKey HadesMP::makeSharpKey( int rank, MP::Communicator group, uint64_t collectiveId ) const
 {
-    auto iter = g_sharpReqMap.find( makeSharpKey(dstRank, collectiveId) );
-    if ( iter == g_sharpReqMap.end() ) {
-        return;
+    const uint64_t rankPart = static_cast<uint64_t>( static_cast<uint32_t>( rank ) );
+    const uint64_t groupPart = static_cast<uint64_t>( static_cast<uint32_t>( group ) );
+    return ( rankPart << 32 ) ^ ( groupPart << 16 ) ^ collectiveId;
+}
+
+void HadesMP::sharpNotifyAckReceived( int dstRank, uint64_t collectiveId,
+                                        uint64_t segId, MP::Communicator group )
+{
+    for ( auto* inst : s_instances ) {
+        if ( inst->sharpNotifyAckReceivedLocal( dstRank, collectiveId, segId, group ) ) {
+            return;
+        }
+    }
+}
+
+bool HadesMP::sharpNotifyAckReceivedLocal( int dstRank, uint64_t collectiveId,
+                                        uint64_t segId, MP::Communicator group )
+{
+    auto iter = m_sharpReqMap.find( makeSharpKey(dstRank, group, collectiveId) );
+    if ( iter == m_sharpReqMap.end() ) {
+        return false;
     }
 
     SharpReqState& req = iter->second;
     if ( req.done ) {
-        return;
+        return true;
     }
 
     ++req.ackCount;
@@ -226,34 +232,46 @@ void HadesMP::sharpNotifyAckReceived( int dstRank, uint64_t collectiveId,
         MP::Functor* retFunc = req.retFunc;
 
         dbg().debug(CALL_INFO,1,1,
-            "SHARP COMPLETE rank=%d cid=%" PRIu64 " seg=%" PRIu64 " (erase pending)\n",
-            dstRank, collectiveId, segId );
+            "SHARP COMPLETE rank=%d group=%u cid=%" PRIu64 " seg=%" PRIu64 " (erase pending)\n",
+            dstRank, group, collectiveId, segId );
 
-        g_sharpReqMap.erase( iter );
+        m_sharpReqMap.erase( iter );
 
         dbg().debug(CALL_INFO,1,1,
-            "SHARP COMPLETE rank=%d cid=%" PRIu64 " seg=%" PRIu64 " (erased)\n",
-            dstRank, collectiveId, segId );
+            "SHARP COMPLETE rank=%d group=%u cid=%" PRIu64 " seg=%" PRIu64 " (erased)\n",
+            dstRank, group, collectiveId, segId );
 
         if ( retFunc ) {
             (*retFunc)(0);
         }
-        return;
+        return true;
     }
 
     (void) segId;
+    return true;
 }
 
 void HadesMP::sharpNotifyDataReceived( int dstRank, uint64_t collectiveId,
-                                         uint64_t segId )
+                                         uint64_t segId, MP::Communicator group )
 {
-    auto iter = g_sharpReqMap.find( makeSharpKey(dstRank, collectiveId) );
-    if ( iter == g_sharpReqMap.end() ) {
-        return;
+    for ( auto* inst : s_instances ) {
+        if ( inst->sharpNotifyDataReceivedLocal( dstRank, collectiveId, segId, group ) ) {
+            return;
+        }
+    }
+}
+
+bool HadesMP::sharpNotifyDataReceivedLocal( int dstRank, uint64_t collectiveId,
+                                         uint64_t segId, MP::Communicator group )
+{
+    auto iter = m_sharpReqMap.find( makeSharpKey(dstRank, group, collectiveId) );
+    if ( iter == m_sharpReqMap.end() ) {
+        return false;
     }
 
     ++iter->second.dataCount;
     (void) segId;
+    return true;
 }
 
 void HadesMP::reduce(const Hermes::MemAddr& mydata,

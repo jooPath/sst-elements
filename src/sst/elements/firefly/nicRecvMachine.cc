@@ -33,9 +33,9 @@ void Nic::RecvMachine::processPkt( FireflyNetworkEvent* ev ) {
             ev->sharpSrcRank(), ev->sharpDstRank() );
 
         if ( ev->sharpIsAck() ) {
-            HadesMP::sharpNotifyAckReceived( ev->sharpDstRank(), ev->sharpCollectiveId(), ev->sharpSegId() );
+            HadesMP::sharpNotifyAckReceived( ev->sharpDstRank(), ev->sharpCollectiveId(), ev->sharpSegId(), static_cast<MP::Communicator>(ev->sharpGroup()) );
         } else {
-            HadesMP::sharpNotifyDataReceived( ev->sharpDstRank(), ev->sharpCollectiveId(), ev->sharpSegId() );
+            HadesMP::sharpNotifyDataReceived( ev->sharpDstRank(), ev->sharpCollectiveId(), ev->sharpSegId(), static_cast<MP::Communicator>(ev->sharpGroup()) );
             m_nic.qSendEntry( new SharpAckSendEntry(
                 ev->getDestPid(), m_nic.getSendStreamNum( ev->getDestPid() ),
                 ev->getSrcNode(), ev->getSrcPid(), ev->sharpVn(),
