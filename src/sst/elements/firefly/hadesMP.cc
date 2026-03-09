@@ -28,7 +28,6 @@ using namespace Hermes::MP;
 
 HadesMP::HadesMP(ComponentId_t id, Params& params) :
     Interface(id), m_os(NULL),
-    m_nextSharpRequestOrdinal(1),
     m_sharpCompletionLink(NULL),
     m_sharpCompletionEventScheduled(false)
 {
@@ -183,8 +182,6 @@ void HadesMP::allreduce_sharp(const Hermes::MemAddr& mydata,
         SharpCbCtx* dataCtx = new SharpCbCtx;
         dataCtx->key = key;
         dataCtx->segId = segId;
-        dataCtx->request = new SharpRecvRequest();
-        dataCtx->request->value = m_nextSharpRequestOrdinal++;
 
         recv(
             Hermes::MemAddr(cur.dataRecvBuffers[segId].data()),
@@ -203,8 +200,6 @@ void HadesMP::allreduce_sharp(const Hermes::MemAddr& mydata,
         SharpCbCtx* ackCtx = new SharpCbCtx;
         ackCtx->key = key;
         ackCtx->segId = segId;
-        ackCtx->request = new SharpRecvRequest();
-        ackCtx->request->value = m_nextSharpRequestOrdinal++;
 
         recv(
             Hermes::MemAddr(cur.ackRecvBuffers[segId].data()),
@@ -286,14 +281,12 @@ bool HadesMP::sharpOnDataRecv(int retval, uint64_t arg)
 
     auto it = m_sharpReqMap.find(key);
     if ( it == m_sharpReqMap.end() ) {
-        delete ctx->request;
         delete ctx;
         return true;
     }
 
     SharpReq& req = it->second;
     if ( segId >= req.dataRecvBuffers.size() ) {
-        delete ctx->request;
         delete ctx;
         return true;
     }
@@ -347,7 +340,6 @@ bool HadesMP::sharpOnDataRecv(int retval, uint64_t arg)
 
     sharpCheckAndComplete(key);
 
-    delete ctx->request;
     delete ctx;
     return true;
 }
@@ -361,7 +353,6 @@ bool HadesMP::sharpOnAckRecv(int retval, uint64_t arg)
 
     auto it = m_sharpReqMap.find(key);
     if ( it == m_sharpReqMap.end() ) {
-        delete ctx->request;
         delete ctx;
         return true;
     }
@@ -383,7 +374,6 @@ bool HadesMP::sharpOnAckRecv(int retval, uint64_t arg)
 
     sharpCheckAndComplete(key);
 
-    delete ctx->request;
     delete ctx;
     return true;
 }

@@ -246,14 +246,9 @@ class HadesMP : public MP::Interface
         }
     };
 
-    struct SharpRecvRequest {
-        uint64_t value;
-    };
-
     struct SharpCbCtx {
         SharpReqKey key;
         uint64_t segId;
-        SharpRecvRequest* request;
     };
 
     struct SharpSendCtx {
@@ -297,7 +292,6 @@ class HadesMP : public MP::Interface
     void scheduleSharpCompletion(MP::Functor* ret);
     void handleSharpCompletionEvent(SST::Event*);
 
-    uint64_t m_nextSharpRequestOrdinal;
     std::unordered_map<SharpReqKey, SharpReq, SharpReqKeyHash> m_sharpReqMap;
     std::deque<MP::Functor*> m_sharpCompletionQ;
     SST::Link* m_sharpCompletionLink;
