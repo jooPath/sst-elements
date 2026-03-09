@@ -307,6 +307,7 @@ EXTRA_DIST = \
 	tests/testsuite_default_ember_qos.py \
 	tests/testsuite_default_ember_ESshmem.py \
 	tests/dragon_128_allreduce_sharp.py \
+	tests/gpu_topo_allreduce_test.py \
 	tests/ESshmem_List-of-Tests \
 	tests/qos-dragonfly.sh \
 	tests/qos-fattree.sh \
