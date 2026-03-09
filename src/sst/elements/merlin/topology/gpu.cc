@@ -71,9 +71,18 @@ void topo_gpu::route_packet(int port, int vc, internal_router_event* ev)
     (void)vc;
 
     const int dst = ev->getDest();
+    const bool dst_in_gpu_range = (dst >= 0 && dst < num_gpu);
+    const bool dst_in_switch_ep_range = (dst >= num_gpu && dst < num_gpu + num_nvswitches);
+
+    // Some front-ends may carry encoded/hashed endpoint IDs in destination fields.
+    // Keep routing live by collapsing unknown destinations to a valid GPU endpoint.
+    int normalized_gpu_dst = dst;
+    if ( !dst_in_gpu_range ) {
+        normalized_gpu_dst = static_cast<int>(static_cast<uint32_t>(dst) % static_cast<uint32_t>(num_gpu));
+    }
 
     if ( isGpuRouter() ) {
-        if ( dst >= 0 && dst < num_gpu ) {
+        if ( dst_in_gpu_range ) {
             if ( dst == router_id ) {
                 ev->setNextPort(num_nvswitches);
             } else {
@@ -82,25 +91,26 @@ void topo_gpu::route_packet(int port, int vc, internal_router_event* ev)
             return;
         }
 
-        if ( dst >= num_gpu && dst < num_gpu + num_nvswitches ) {
+        if ( dst_in_switch_ep_range ) {
             ev->setNextPort(dst - num_gpu);
             return;
         }
 
-        output.fatal(CALL_INFO, -1, "topo_gpu GPU router unsupported destination %d\n", dst);
+        ev->setNextPort( (normalized_gpu_dst == router_id) ? num_nvswitches : selectSwitch(ev) );
+        return;
     }
-    else {
-        const int local_switch_ep = num_gpu + (router_id - num_gpu);
-        if ( dst == local_switch_ep ) {
-            ev->setNextPort(num_gpu);
-            return;
-        }
-        if ( dst >= 0 && dst < num_gpu ) {
-            ev->setNextPort(dst);
-            return;
-        }
-        output.fatal(CALL_INFO, -1, "topo_gpu NVSwitch router unsupported destination %d\n", dst);
+
+    const int local_switch_ep = num_gpu + (router_id - num_gpu);
+    if ( dst == local_switch_ep ) {
+        ev->setNextPort(num_gpu);
+        return;
     }
+    if ( dst_in_gpu_range ) {
+        ev->setNextPort(dst);
+        return;
+    }
+
+    ev->setNextPort(normalized_gpu_dst);
 }
 
 internal_router_event* topo_gpu::process_input(RtrEvent* ev)
