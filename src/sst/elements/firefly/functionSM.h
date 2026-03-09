@@ -39,6 +39,7 @@ class ProtocolAPI;
         NAME(MakeProgress)   \
         NAME(Barrier)   \
         NAME(Allreduce)   \
+        NAME(AllreduceSharp)   \
         NAME(Allgather)   \
         NAME(Gatherv)   \
         NAME(Scatterv)   \
