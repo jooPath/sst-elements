@@ -100,5 +100,5 @@ class topoGPU(Topology):
                 })
 
                 sharp_link = sst.Link("sharp_nvs_%d" % s)
-                sharp_link.connect((sharp, "rtr", self.link_latency),
+                sharp_link.connect((sharp_if, "rtr", self.link_latency),
                                    (rtr, "port%d" % self.num_gpu, self.link_latency))
