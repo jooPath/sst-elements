@@ -51,14 +51,13 @@ if __name__ == "__main__":
     ep.network_interface = networkif
     ep.addMotif("Init")
     #ep.addMotif("PingPong messageSize=1048576 iterations=1 rank2=1")
-    #ep.addMotif("AllreduceSharp bytes=1")
-    #ep.addMotif("AllreduceSharp bytes=4096 iterations=4 debug_trace=1")
-    ep.addMotif("Allreduce iterations=4")
+    #ep.addMotif("Allreduce iterations=4")
+    ep.addMotif("AllreduceSharp bytes=4096 iterations=4 debug_trace=1")
     ep.addMotif("Fini")
 
-    # NVLink payload size: larger data is segmented by packetSize and
-    # can be striped over multiple NVSwitches by the GPU topology router.
-    ep.nic.packetSize = "16kB"
+    # SHARP path validation: use packet segmentation so segId-based switch
+    # selection can distribute traffic across NVSwitches.
+    ep.nic.packetSize = "1024B"
 
     system = System()
     system.setTopology(topo)
