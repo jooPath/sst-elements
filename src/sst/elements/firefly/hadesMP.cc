@@ -15,6 +15,9 @@
 
 #include <sst_config.h>
 
+#include <algorithm>
+#include <cstring>
+
 #include "hadesMP.h"
 #include "funcSM/event.h"
 
@@ -24,8 +27,14 @@ using namespace Hermes::MP;
 
 
 HadesMP::HadesMP(ComponentId_t id, Params& params) :
-    Interface(id), m_os(NULL)
+    Interface(id), m_os(NULL),
+    m_sharpCompletionLink(NULL),
+    m_sharpCompletionEventScheduled(false)
 {
+    m_sharpCompletionLink = configureSelfLink(
+        "HadesMP::SharpCompletion",
+        "1ns",
+        new Event::Handler2<HadesMP,&HadesMP::handleSharpCompletionEvent>(this));
 }
 
 #if PRINT_STATUS
@@ -123,14 +132,300 @@ void HadesMP::allreduce_sharp(const Hermes::MemAddr& mydata,
         ReductionOperation op, Communicator group,
         uint64_t collectiveId, Functor* retFunc)
 {
-    (void) op;
-    dbg().debug(CALL_INFO,1,1,
-        "allreduce_sharp stub path: in=%p out=%p bytes=%" PRIu64 " group=%u collective_id=%" PRIu64 "\n",
-        &mydata, &result, bytes, group, collectiveId);
+    int rank = m_os->getRank();
+    int size = m_os->getNumNodes();
 
-    // Stub behavior for motif-path validation. No reuse of the legacy allreduce path.
-    if ( retFunc ) {
-        (*retFunc)( 0 );
+    if ( bytes == 0 || size <= 1 ) {
+        scheduleSharpCompletion(retFunc);
+        return;
+    }
+
+    SharpReqKey key = { rank, group, collectiveId };
+    if ( m_sharpReqMap.find(key) != m_sharpReqMap.end() ) {
+        dbg().fatal(CALL_INFO, -1,
+            "duplicate SHARP request key rank=%d group=%u cid=%" PRIu64 "\n",
+            rank, group, collectiveId);
+    }
+
+    SharpReq req;
+    req.mydata = mydata;
+    req.result = result;
+    req.bytes = bytes;
+    req.op = op;
+    req.group = group;
+    req.collectiveId = collectiveId;
+    req.retFunc = retFunc;
+    req.rank = rank;
+    req.size = size;
+    req.dstRank = (rank + 1) % size;
+    req.srcRank = (rank + size - 1) % size;
+    req.numSegments = (bytes + kSharpSegSize - 1) / kSharpSegSize;
+    req.dataRecvBuffers.resize(req.numSegments);
+    req.ackRecvBuffers.resize(req.numSegments);
+    req.dataResponses.resize(req.numSegments);
+    req.ackResponses.resize(req.numSegments);
+
+    dbg().debug(CALL_INFO,1,1,
+        "SHARP ISSUE rank=%d group=%u cid=%" PRIu64 " bytes=%" PRIu64 " segs=%" PRIu64 "\n",
+        rank, group, collectiveId, bytes, req.numSegments);
+
+    m_sharpReqMap.emplace(key, std::move(req));
+    SharpReq& cur = m_sharpReqMap.find(key)->second;
+
+    for ( uint64_t segId = 0; segId < cur.numSegments; ++segId ) {
+        uint64_t offset = segId * kSharpSegSize;
+        uint32_t segBytes = std::min<uint64_t>(kSharpSegSize, bytes - offset);
+
+        cur.dataRecvBuffers[segId].resize(sizeof(SharpPktHdr) + segBytes);
+        cur.ackRecvBuffers[segId].resize(sizeof(SharpPktHdr));
+
+        SharpCbCtx* dataCtx = new SharpCbCtx;
+        dataCtx->key = key;
+        dataCtx->segId = segId;
+
+        recv(
+            Hermes::MemAddr(cur.dataRecvBuffers[segId].data()),
+            cur.dataRecvBuffers[segId].size(),
+            MP::CHAR,
+            cur.srcRank,
+            kSharpDataTag,
+            group,
+            &cur.dataResponses[segId],
+            new ArgStatic_Functor<HadesMP, int, uint64_t, bool>(
+                this,
+                &HadesMP::sharpOnDataRecv,
+                reinterpret_cast<uint64_t>(dataCtx))
+        );
+
+        SharpCbCtx* ackCtx = new SharpCbCtx;
+        ackCtx->key = key;
+        ackCtx->segId = segId;
+
+        recv(
+            Hermes::MemAddr(cur.ackRecvBuffers[segId].data()),
+            cur.ackRecvBuffers[segId].size(),
+            MP::CHAR,
+            cur.dstRank,
+            kSharpAckTag,
+            group,
+            &cur.ackResponses[segId],
+            new ArgStatic_Functor<HadesMP, int, uint64_t, bool>(
+                this,
+                &HadesMP::sharpOnAckRecv,
+                reinterpret_cast<uint64_t>(ackCtx))
+        );
+
+        SharpSendCtx* sendCtx = new SharpSendCtx;
+        sendCtx->packet.resize(sizeof(SharpPktHdr) + segBytes);
+
+        SharpPktHdr hdr;
+        memset(&hdr, 0, sizeof(hdr));
+        hdr.pktType = 0;
+        hdr.isSharp = 1;
+        hdr.collective_id = collectiveId;
+        hdr.seg_id = segId;
+        hdr.segment_bytes = segBytes;
+        hdr.group = group;
+        hdr.op = (op ? op->type : 0);
+        hdr.srcRank = rank;
+        hdr.dstRank = cur.dstRank;
+
+        memcpy(sendCtx->packet.data(), &hdr, sizeof(hdr));
+        if ( mydata.getBacking() ) {
+            memcpy(sendCtx->packet.data() + sizeof(hdr), mydata.getBacking(offset), segBytes);
+        } else {
+            memset(sendCtx->packet.data() + sizeof(hdr), 0, segBytes);
+        }
+
+        send(
+            Hermes::MemAddr(sendCtx->packet.data()),
+            sendCtx->packet.size(),
+            MP::CHAR,
+            cur.dstRank,
+            kSharpDataTag,
+            group,
+            new ArgStatic_Functor<HadesMP, int, uint64_t, bool>(
+                this,
+                &HadesMP::sharpOnDataSendDone,
+                reinterpret_cast<uint64_t>(sendCtx))
+        );
+
+        dbg().debug(CALL_INFO,2,1,
+            "SEND DATA rank=%d cid=%" PRIu64 " seg=%" PRIu64 " bytes=%u dst=%d\n",
+            rank, collectiveId, segId, segBytes, cur.dstRank);
+    }
+}
+
+bool HadesMP::sharpOnDataSendDone(int retval, uint64_t arg)
+{
+    (void) retval;
+    SharpSendCtx* sendCtx = reinterpret_cast<SharpSendCtx*>(arg);
+    delete sendCtx;
+    return true;
+}
+
+bool HadesMP::sharpOnAckSendDone(int retval, uint64_t arg)
+{
+    (void) retval;
+    SharpSendCtx* sendCtx = reinterpret_cast<SharpSendCtx*>(arg);
+    delete sendCtx;
+    return true;
+}
+
+bool HadesMP::sharpOnDataRecv(int retval, uint64_t arg)
+{
+    (void) retval;
+    SharpCbCtx* ctx = reinterpret_cast<SharpCbCtx*>(arg);
+    SharpReqKey key = ctx->key;
+    uint64_t segId = ctx->segId;
+
+    auto it = m_sharpReqMap.find(key);
+    if ( it == m_sharpReqMap.end() ) {
+        delete ctx;
+        return true;
+    }
+
+    SharpReq& req = it->second;
+    if ( segId >= req.dataRecvBuffers.size() ) {
+        delete ctx;
+        return true;
+    }
+
+    SharpPktHdr hdr;
+    memcpy(&hdr, req.dataRecvBuffers[segId].data(), sizeof(hdr));
+
+    if ( hdr.isSharp && hdr.pktType == 0 && hdr.collective_id == key.collectiveId && hdr.seg_id == segId ) {
+        if ( req.recvDataSegments.insert(segId).second && req.result.getBacking() ) {
+            if ( hdr.segment_bytes <= kSharpSegSize ) {
+                memcpy(req.result.getBacking(segId * kSharpSegSize),
+                    req.dataRecvBuffers[segId].data() + sizeof(SharpPktHdr),
+                    hdr.segment_bytes);
+            }
+        }
+
+        SharpSendCtx* ackSend = new SharpSendCtx;
+        ackSend->packet.resize(sizeof(SharpPktHdr));
+
+        SharpPktHdr ackHdr;
+        memset(&ackHdr, 0, sizeof(ackHdr));
+        ackHdr.pktType = 1;
+        ackHdr.isSharp = 1;
+        ackHdr.collective_id = hdr.collective_id;
+        ackHdr.seg_id = hdr.seg_id;
+        ackHdr.segment_bytes = 0;
+        ackHdr.group = hdr.group;
+        ackHdr.op = hdr.op;
+        ackHdr.srcRank = req.rank;
+        ackHdr.dstRank = req.srcRank;
+
+        memcpy(ackSend->packet.data(), &ackHdr, sizeof(ackHdr));
+
+        send(
+            Hermes::MemAddr(ackSend->packet.data()),
+            ackSend->packet.size(),
+            MP::CHAR,
+            req.srcRank,
+            kSharpAckTag,
+            req.group,
+            new ArgStatic_Functor<HadesMP, int, uint64_t, bool>(
+                this,
+                &HadesMP::sharpOnAckSendDone,
+                reinterpret_cast<uint64_t>(ackSend))
+        );
+
+        dbg().debug(CALL_INFO,2,1,
+            "RECV DATA rank=%d cid=%" PRIu64 " seg=%" PRIu64 " -> SEND ACK to %d\n",
+            req.rank, req.collectiveId, segId, req.srcRank);
+    }
+
+    sharpCheckAndComplete(key);
+
+    delete ctx;
+    return true;
+}
+
+bool HadesMP::sharpOnAckRecv(int retval, uint64_t arg)
+{
+    (void) retval;
+    SharpCbCtx* ctx = reinterpret_cast<SharpCbCtx*>(arg);
+    SharpReqKey key = ctx->key;
+    uint64_t segId = ctx->segId;
+
+    auto it = m_sharpReqMap.find(key);
+    if ( it == m_sharpReqMap.end() ) {
+        delete ctx;
+        return true;
+    }
+
+    SharpReq& req = it->second;
+    if ( segId < req.ackRecvBuffers.size() ) {
+        SharpPktHdr hdr;
+        memcpy(&hdr, req.ackRecvBuffers[segId].data(), sizeof(hdr));
+
+        if ( hdr.isSharp && hdr.pktType == 1 &&
+                hdr.collective_id == key.collectiveId && hdr.seg_id == segId ) {
+            if ( req.ackedSegments.insert(segId).second ) {
+                dbg().debug(CALL_INFO,2,1,
+                    "RECV ACK rank=%d cid=%" PRIu64 " seg=%" PRIu64 "\n",
+                    req.rank, req.collectiveId, segId);
+            }
+        }
+    }
+
+    sharpCheckAndComplete(key);
+
+    delete ctx;
+    return true;
+}
+
+void HadesMP::sharpCheckAndComplete(const SharpReqKey& key)
+{
+    auto it = m_sharpReqMap.find(key);
+    if ( it == m_sharpReqMap.end() ) {
+        return;
+    }
+
+    SharpReq& req = it->second;
+    if ( req.recvDataSegments.size() == req.numSegments &&
+            req.ackedSegments.size() == req.numSegments ) {
+        MP::Functor* ret = req.retFunc;
+        dbg().debug(CALL_INFO,1,1,
+            "SHARP COMPLETE rank=%d cid=%" PRIu64 "\n",
+            req.rank, req.collectiveId);
+        m_sharpReqMap.erase(it);
+        scheduleSharpCompletion(ret);
+    }
+}
+
+void HadesMP::scheduleSharpCompletion(MP::Functor* ret)
+{
+    if ( !ret ) {
+        return;
+    }
+
+    m_sharpCompletionQ.push_back(ret);
+    if ( !m_sharpCompletionEventScheduled ) {
+        m_sharpCompletionEventScheduled = true;
+        m_sharpCompletionLink->send(0, new SharpCompletionEvent());
+    }
+}
+
+void HadesMP::handleSharpCompletionEvent(SST::Event* ev)
+{
+    delete ev;
+
+    m_sharpCompletionEventScheduled = false;
+    while ( !m_sharpCompletionQ.empty() ) {
+        MP::Functor* ret = m_sharpCompletionQ.front();
+        m_sharpCompletionQ.pop_front();
+        if ( ret ) {
+            (*ret)(MP::SUCCESS);
+        }
+    }
+
+    if ( !m_sharpCompletionQ.empty() ) {
+        m_sharpCompletionEventScheduled = true;
+        m_sharpCompletionLink->send(0, new SharpCompletionEvent());
     }
 }
 

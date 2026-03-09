@@ -18,6 +18,12 @@
 #define COMPONENTS_FIREFLY_HADESMP_H
 
 #include <sst/core/params.h>
+#include <sst/core/link.h>
+
+#include <deque>
+#include <set>
+#include <unordered_map>
+#include <vector>
 
 #include "sst/elements/hermes/msgapi.h"
 #include "hades.h"
@@ -201,6 +207,96 @@ class HadesMP : public MP::Interface
     virtual void comm_destroy( MP::Communicator, MP::Functor* );
 
   private:
+    static const uint32_t kSharpDataTag = 0x5A700001u;
+    static const uint32_t kSharpAckTag = 0x5A700002u;
+    static const uint32_t kSharpSegSize = 1024u;
+
+    struct SharpPktHdr {
+        uint8_t  pktType;
+        uint8_t  isSharp;
+        uint16_t reserved;
+        uint64_t collective_id;
+        uint64_t seg_id;
+        uint32_t segment_bytes;
+        uint32_t group;
+        uint32_t op;
+        int32_t srcRank;
+        int32_t dstRank;
+    };
+
+    struct SharpReqKey {
+        int rank;
+        uint32_t group;
+        uint64_t collectiveId;
+
+        bool operator==( const SharpReqKey& rhs ) const {
+            return rank == rhs.rank &&
+                group == rhs.group &&
+                collectiveId == rhs.collectiveId;
+        }
+    };
+
+    struct SharpReqKeyHash {
+        std::size_t operator()( const SharpReqKey& key ) const {
+            return std::hash<uint64_t>()(
+                (static_cast<uint64_t>( static_cast<uint32_t>(key.rank) ) << 32) ^
+                key.collectiveId ^
+                static_cast<uint64_t>(key.group)
+            );
+        }
+    };
+
+    struct SharpCbCtx {
+        SharpReqKey key;
+        uint64_t segId;
+    };
+
+    struct SharpSendCtx {
+        std::vector<char> packet;
+    };
+
+    struct SharpReq {
+        Hermes::MemAddr mydata;
+        Hermes::MemAddr result;
+        uint64_t bytes;
+        MP::ReductionOperation op;
+        MP::Communicator group;
+        uint64_t collectiveId;
+        MP::Functor* retFunc;
+        int rank;
+        int size;
+        int dstRank;
+        int srcRank;
+        uint64_t numSegments;
+
+        std::set<uint64_t> recvDataSegments;
+        std::set<uint64_t> ackedSegments;
+
+        std::vector<std::vector<char>> dataRecvBuffers;
+        std::vector<std::vector<char>> ackRecvBuffers;
+        std::vector<MP::MessageResponse> dataResponses;
+        std::vector<MP::MessageResponse> ackResponses;
+    };
+
+    class SharpCompletionEvent : public SST::Event {
+      public:
+        SharpCompletionEvent() : SST::Event() {}
+        NotSerializable(SharpCompletionEvent)
+    };
+
+    bool sharpOnDataSendDone(int, uint64_t);
+    bool sharpOnAckSendDone(int, uint64_t);
+    bool sharpOnDataRecv(int, uint64_t);
+    bool sharpOnAckRecv(int, uint64_t);
+    void sharpCheckAndComplete(const SharpReqKey& key);
+    void scheduleSharpCompletion(MP::Functor* ret);
+    void handleSharpCompletionEvent(SST::Event*);
+
+    std::unordered_map<SharpReqKey, SharpReq, SharpReqKeyHash> m_sharpReqMap;
+    std::deque<MP::Functor*> m_sharpCompletionQ;
+    SST::Link* m_sharpCompletionLink;
+    bool m_sharpCompletionEventScheduled;
+
     Output  m_dbg;
 	Output& dbg() { return m_dbg; }
 	FunctionSM& functionSM() { return m_os->getFunctionSM(); }
