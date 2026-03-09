@@ -50,6 +50,8 @@ libfirefly_la_SOURCES = \
 	funcSM/allgather.cc \
 	funcSM/allgather.h \
 	funcSM/allreduce.h \
+	funcSM/allreduceSharp.h \
+	funcSM/allreduceSharp.cc \
 	funcSM/collectiveOps.h \
 	funcSM/collectiveTree.cc \
 	funcSM/collectiveTree.h \

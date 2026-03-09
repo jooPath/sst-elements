@@ -187,6 +187,30 @@ class CollectiveStartEvent : public Event {
     NotSerializable(CollectiveStartEvent)
 };
 
+class AllreduceSharpStartEvent : public Event {
+  public:
+    AllreduceSharpStartEvent(
+                const Hermes::MemAddr& _mydata, const Hermes::MemAddr& _result,
+                uint64_t _bytes, MP::ReductionOperation _op,
+                MP::Communicator _group, uint64_t _collectiveId ) :
+        mydata(_mydata),
+        result(_result),
+        bytes(_bytes),
+        op(_op),
+        group(_group),
+        collectiveId(_collectiveId)
+    {}
+
+    Hermes::MemAddr mydata;
+    Hermes::MemAddr result;
+    uint64_t bytes;
+    MP::ReductionOperation op;
+    MP::Communicator group;
+    uint64_t collectiveId;
+
+    NotSerializable(AllreduceSharpStartEvent)
+};
+
 class ScattervStartEvent : public Event {
 
   public:

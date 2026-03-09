@@ -123,15 +123,12 @@ void HadesMP::allreduce_sharp(const Hermes::MemAddr& mydata,
         ReductionOperation op, Communicator group,
         uint64_t collectiveId, Functor* retFunc)
 {
-    (void) op;
     dbg().debug(CALL_INFO,1,1,
-        "allreduce_sharp stub path: in=%p out=%p bytes=%" PRIu64 " group=%u collective_id=%" PRIu64 "\n",
+        "allreduce_sharp start: in=%p out=%p bytes=%" PRIu64 " group=%u collective_id=%" PRIu64 "\n",
         &mydata, &result, bytes, group, collectiveId);
 
-    // Stub behavior for motif-path validation. No reuse of the legacy allreduce path.
-    if ( retFunc ) {
-        (*retFunc)( 0 );
-    }
+    functionSM().start( FunctionSM::AllreduceSharp, retFunc,
+        new AllreduceSharpStartEvent(mydata, result, bytes, op, group, collectiveId) );
 }
 
 void HadesMP::reduce(const Hermes::MemAddr& mydata,
