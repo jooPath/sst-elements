@@ -22,6 +22,7 @@
 #include <funcSM/size.h>
 #include <funcSM/makeProgress.h>
 #include <funcSM/allreduce.h>
+#include <funcSM/allreduceSharp.h>
 #include <funcSM/commDestroy.h>
 #include <rangeLatMod.h>
 #include <scaleLatMod.h>

@@ -59,7 +59,7 @@ class topoGPU(Topology):
             if rid < self.num_gpu:
                 radix = self.num_nvswitches + 1
             else:
-                radix = self.num_gpu
+                radix = self.num_gpu + 1
 
             rtr = self._instanceRouter(radix, rid)
             topo = rtr.setSubComponent(self.router.getTopologySlotName(), "merlin.gpu_topo")
@@ -82,3 +82,23 @@ class topoGPU(Topology):
                 s = rid - self.num_gpu
                 for g in range(self.num_gpu):
                     rtr.addLink(getLink(g, s), "port%d" % g, self.link_latency)
+
+                sharp = sst.Component("nvswitch_collective_%d" % s, "merlin.nvswitch_collective_endpoint")
+                sharp.addParams({
+                    "num_gpu": self.num_gpu,
+                    "num_nvswitches": self.num_nvswitches,
+                    "switch_index": s,
+                    "node_id": self.num_gpu + s,
+                })
+
+                sharp_if = sharp.setSubComponent("networkIF", "merlin.linkcontrol", 0)
+                sharp_if.addParams({
+                    "link_bw": self.router.link_bw,
+                    "input_buf_size": "64kB",
+                    "output_buf_size": "64kB",
+                    "port_name": "rtr",
+                })
+
+                sharp_link = sst.Link("sharp_nvs_%d" % s)
+                sharp_link.connect((sharp_if, "rtr_port", self.link_latency),
+                                   (rtr, "port%d" % self.num_gpu, self.link_latency))

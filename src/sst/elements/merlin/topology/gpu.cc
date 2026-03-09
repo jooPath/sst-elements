@@ -42,8 +42,9 @@ topo_gpu::topo_gpu(ComponentId_t cid, Params& params, int num_ports, int rtr_id,
         }
     }
     else if ( router_id < (num_gpu + num_nvswitches) ) {
-        if ( num_ports != num_gpu ) {
-            output.fatal(CALL_INFO, -1, "topo_gpu NVSwitch router %d requires radix %d (got %d)\n", router_id, num_gpu, num_ports);
+        const int expected_ports = num_gpu + 1;
+        if ( num_ports != expected_ports ) {
+            output.fatal(CALL_INFO, -1, "topo_gpu NVSwitch router %d requires radix %d (got %d)\n", router_id, expected_ports, num_ports);
         }
     }
     else {
@@ -70,21 +71,46 @@ void topo_gpu::route_packet(int port, int vc, internal_router_event* ev)
     (void)vc;
 
     const int dst = ev->getDest();
-    if ( dst < 0 || dst >= num_gpu ) {
-        output.fatal(CALL_INFO, -1, "topo_gpu only supports GPU endpoint destinations [0,%d). Got %d\n", num_gpu, dst);
+    const bool dst_in_gpu_range = (dst >= 0 && dst < num_gpu);
+    const bool dst_in_switch_ep_range = (dst >= num_gpu && dst < num_gpu + num_nvswitches);
+
+    // Some front-ends may carry encoded/hashed endpoint IDs in destination fields.
+    // Keep routing live by collapsing unknown destinations to a valid GPU endpoint.
+    int normalized_gpu_dst = dst;
+    if ( !dst_in_gpu_range ) {
+        normalized_gpu_dst = static_cast<int>(static_cast<uint32_t>(dst) % static_cast<uint32_t>(num_gpu));
     }
 
     if ( isGpuRouter() ) {
-        if ( dst == router_id ) {
-            ev->setNextPort(num_nvswitches);
+        if ( dst_in_gpu_range ) {
+            if ( dst == router_id ) {
+                ev->setNextPort(num_nvswitches);
+            } else {
+                ev->setNextPort(selectSwitch(ev));
+            }
+            return;
         }
-        else {
-            ev->setNextPort(selectSwitch(ev));
+
+        if ( dst_in_switch_ep_range ) {
+            ev->setNextPort(dst - num_gpu);
+            return;
         }
+
+        ev->setNextPort( (normalized_gpu_dst == router_id) ? num_nvswitches : selectSwitch(ev) );
+        return;
     }
-    else {
+
+    const int local_switch_ep = num_gpu + (router_id - num_gpu);
+    if ( dst == local_switch_ep ) {
+        ev->setNextPort(num_gpu);
+        return;
+    }
+    if ( dst_in_gpu_range ) {
         ev->setNextPort(dst);
+        return;
     }
+
+    ev->setNextPort(normalized_gpu_dst);
 }
 
 internal_router_event* topo_gpu::process_input(RtrEvent* ev)
@@ -135,29 +161,42 @@ Topology::PortState topo_gpu::getPortState(int port) const
         return (port == num_nvswitches) ? R2N : R2R;
     }
 
-    if ( port < 0 || port >= num_gpu ) {
+    if ( port < 0 || port >= num_gpu + 1 ) {
         return UNCONNECTED;
     }
-    return R2R;
+    return (port == num_gpu) ? R2N : R2R;
 }
 
 int topo_gpu::getEndpointID(int port)
 {
-    if ( !isGpuRouter() || port != num_nvswitches ) {
+    if ( isGpuRouter() ) {
+        if ( port == num_nvswitches ) {
+            return router_id;
+        }
         return -1;
     }
-    return router_id;
+
+    if ( port == num_gpu ) {
+        return num_gpu + (router_id - num_gpu);
+    }
+    return -1;
 }
 
 std::pair<int,int> topo_gpu::getDeliveryPortForEndpointID(int ep_id)
 {
-    if ( ep_id < 0 || ep_id >= num_gpu ) {
+    if ( isGpuRouter() ) {
+        if ( ep_id < 0 || ep_id >= num_gpu ) {
+            return std::make_pair(-1, -1);
+        }
+        if ( router_id == ep_id ) {
+            return std::make_pair(num_nvswitches, 0);
+        }
         return std::make_pair(-1, -1);
     }
 
-    if ( router_id == ep_id ) {
-        return std::make_pair(num_nvswitches, 0);
+    const int local_ep = num_gpu + (router_id - num_gpu);
+    if ( ep_id == local_ep ) {
+        return std::make_pair(num_gpu, 0);
     }
-
     return std::make_pair(-1, -1);
 }

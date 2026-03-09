@@ -15,6 +15,8 @@ libmerlin_la_SOURCES = \
 	merlin.cc \
 	router.h \
 	bridge.h \
+	nvswitch_collective_endpoint.h \
+	nvswitch_collective_endpoint.cc \
 	background_traffic/background_traffic.h \
 	background_traffic/background_traffic.cc \
 	offeredload/offered_load.h \
