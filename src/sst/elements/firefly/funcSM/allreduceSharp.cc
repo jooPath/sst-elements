@@ -18,6 +18,7 @@
 #include <inttypes.h>
 
 #include "funcSM/allreduceSharp.h"
+#include "info.h"
 
 using namespace SST::Firefly;
 
