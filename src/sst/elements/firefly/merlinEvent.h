@@ -30,19 +30,29 @@ class FireflyNetworkEvent : public Event {
 
   public:
 
-    FireflyNetworkEvent( ) : offset(0), bufLen(0), m_isHdr(false), m_isTail(false), m_isCtrl(false), pktOverhead(0) {
+    FireflyNetworkEvent( ) : offset(0), bufLen(0), m_isHdr(false), m_isTail(false), m_isCtrl(false),
+            m_isSharp(false), m_sharpCollectiveId(0), m_sharpFragId(0), pktOverhead(0) {
         buf.reserve( 1000 );
         assert( 0 == buf.size() );
     }
 
     FireflyNetworkEvent( int pktOverhead, size_t reserve = 1000 ) : offset(0), bufLen(0),
-            m_isHdr(false), m_isTail(false), m_isCtrl(false), pktOverhead(pktOverhead) {
+            m_isHdr(false), m_isTail(false), m_isCtrl(false),
+            m_isSharp(false), m_sharpCollectiveId(0), m_sharpFragId(0), pktOverhead(pktOverhead) {
         buf.reserve( reserve );
         assert( 0 == buf.size() );
     }
 
     void setCtrl() { m_isCtrl = true; }
     bool isCtrl() { return m_isCtrl; }
+    void setSharpMeta(uint64_t collectiveId, uint32_t fragId) {
+        m_isSharp = true;
+        m_sharpCollectiveId = collectiveId;
+        m_sharpFragId = fragId;
+    }
+    bool isSharp() const { return m_isSharp; }
+    uint64_t sharpCollectiveId() const { return m_sharpCollectiveId; }
+    uint32_t sharpFragId() const { return m_sharpFragId; }
     void setHdr() { m_isHdr = true; }
     void clearHdr() { m_isHdr = false; }
     bool isHdr() { return m_isHdr; }
@@ -114,6 +124,9 @@ class FireflyNetworkEvent : public Event {
         m_isHdr = me->m_isHdr;
         m_isTail = me->m_isTail;
         m_isCtrl = me->m_isCtrl;
+        m_isSharp = me->m_isSharp;
+        m_sharpCollectiveId = me->m_sharpCollectiveId;
+        m_sharpFragId = me->m_sharpFragId;
         offset = me->offset;
         pktOverhead = me->pktOverhead;
     }
@@ -130,6 +143,9 @@ class FireflyNetworkEvent : public Event {
         m_isHdr = me.m_isHdr;
         m_isTail = me.m_isTail;
         m_isCtrl = me.m_isCtrl;
+        m_isSharp = me.m_isSharp;
+        m_sharpCollectiveId = me.m_sharpCollectiveId;
+        m_sharpFragId = me.m_sharpFragId;
         offset = me.offset;
         pktOverhead = me.pktOverhead;
     }
@@ -160,6 +176,9 @@ class FireflyNetworkEvent : public Event {
     bool            m_isHdr;
     bool            m_isTail;
     bool            m_isCtrl;
+    bool            m_isSharp;
+    uint64_t        m_sharpCollectiveId;
+    uint32_t        m_sharpFragId;
     int             pktOverhead;
 
     size_t          offset;
@@ -181,6 +200,9 @@ class FireflyNetworkEvent : public Event {
         SST_SER(m_isHdr);
         SST_SER(m_isTail);
         SST_SER(m_isCtrl);
+        SST_SER(m_isSharp);
+        SST_SER(m_sharpCollectiveId);
+        SST_SER(m_sharpFragId);
     }
 
     ImplementSerializable(SST::Firefly::FireflyNetworkEvent);

@@ -648,6 +648,11 @@ void Nic::sendPkt( FireflyNetworkEvent* ev, int dest, int vn )
                                                     ev->bufSize(), (uint64_t)m_packetId,
                                                     ev->isHdr() ? "Hdr":"",
                                                     ev->isTail() ? "Tail":"" );
+    if ( ev->isSharp() ) {
+        m_dbg.debug(CALL_INFO,1,NIC_DBG_SEND_NETWORK,
+            "SHARP net packet: dst=%d collective=%" PRIu64 " frag=%" PRIu32 "\n",
+            dest, ev->sharpCollectiveId(), ev->sharpFragId());
+    }
 
 	m_sentByteCount->addData( ev->payloadSize() );
 
@@ -787,4 +792,3 @@ Hermes::MemAddr Nic::findShmem(  int core, Hermes::Vaddr addr, size_t length )
 
     return region.first.offset(offset);
 }
-

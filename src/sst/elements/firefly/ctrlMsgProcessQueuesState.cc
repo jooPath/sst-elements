@@ -251,7 +251,8 @@ void ProcessQueuesState::processSend_2( _CommReq* req )
     VoidFunction* callback = new VoidFunction;
     *callback = std::bind( &ProcessQueuesState::pioSendFiniVoid, this, ptrs, hdrVec.addr.getSimVAddr() );
 
-    m_nic->pioSend( vn, nid, ShortMsgQ, vec, callback);
+    m_nic->pioSend( vn, nid, ShortMsgQ, vec, callback,
+                    req->m_isSharp, req->m_sharpCollectiveId );
 
     if ( ! req->isBlocking() ) {
         enterMakeProgress(m_exitDelay);
