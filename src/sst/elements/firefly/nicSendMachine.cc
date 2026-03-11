@@ -15,6 +15,7 @@
 
 
 #include "sst_config.h"
+#include <inttypes.h>
 #include "nic.h"
 
 using namespace SST;
@@ -23,6 +24,7 @@ using namespace SST::Interfaces;
 
 void Nic::SendMachine::streamInit( SendEntryBase* entry )
 {
+    m_sharpFragCounter = 0;
     MsgHdr hdr;
 
 #ifdef NIC_SEND_DEBUG
@@ -57,6 +59,12 @@ void Nic::SendMachine::getPayload( SendEntryBase* entry, FireflyNetworkEvent* ev
     ev->setDestPid( entry->dst_vNic() );
     ev->setSrcPid( pid );
     ev->setSrcStream( entry->streamNum() );
+    if ( entry->isSharp() && !ev->isSharp() ) {
+        ev->setSharpMeta(entry->sharpCollectiveId(), m_sharpFragCounter++);
+        m_dbg.debug(CALL_INFO,1,NIC_DBG_SEND_MACHINE,
+            "SHARP packet metadata: collective=%" PRIu64 " frag=%" PRIu32 "\n",
+            entry->sharpCollectiveId(), ev->sharpFragId());
+    }
     if ( ! m_inQ->isFull() ) {
 	    std::vector< MemOp >* vec = new std::vector< MemOp >;
         entry->copyOut( m_dbg, m_packetSizeInBytes, *ev, *vec );

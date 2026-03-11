@@ -382,9 +382,12 @@ class NicCmdEvent : public NicCmdBaseEvent {
     std::vector<IoVec> iovec;
     void* key;
     int vn;
+    bool isSharp;
+    uint64_t sharpCollectiveId;
 
     NicCmdEvent( Type _type, int _vNic, int _node, int _tag,
-            std::vector<IoVec>& _vec, void* _key, int vn = 0 ) :
+            std::vector<IoVec>& _vec, void* _key, int vn = 0,
+            bool _isSharp = false, uint64_t _sharpCollectiveId = 0 ) :
         NicCmdBaseEvent(Msg),
         type( _type ),
         node( _node ),
@@ -392,7 +395,9 @@ class NicCmdEvent : public NicCmdBaseEvent {
         tag( _tag ),
         iovec( _vec ),
         key( _key ),
-        vn(vn)
+        vn(vn),
+        isSharp(_isSharp),
+        sharpCollectiveId(_sharpCollectiveId)
     { }
 
     NotSerializable(NicCmdEvent)

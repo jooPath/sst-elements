@@ -58,6 +58,7 @@ private:
     uint64_t rr_counter;
 
     inline bool isGpuRouter() const { return router_id < num_gpu; }
+    int selectSharpSwitch(uint64_t collectiveId, uint32_t fragId) const;
     int selectSwitch(const internal_router_event* ev);
 
 public:

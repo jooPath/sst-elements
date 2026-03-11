@@ -18,6 +18,7 @@
 #include <inttypes.h>
 
 #include "funcSM/allreduceSharp.h"
+#include "info.h"
 
 using namespace SST::Firefly;
 
@@ -80,7 +81,8 @@ void AllreduceSharpFuncSM::handleEnterEvent( Retval& retval )
 
       case PostSend:
         proto()->isend( m_sendAddr, m_event->bytes, MP::CHAR, m_dstRank,
-                        genTag(m_iteration), m_event->group, &m_sendReq );
+                        genTag(m_iteration), m_event->group, &m_sendReq,
+                        true, m_event->collectiveId );
         m_state = WaitRecv;
         break;
 

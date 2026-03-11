@@ -16,8 +16,10 @@
 #include <sst_config.h>
 
 #include <functional>
+#include <inttypes.h>
 
 #include "gpu.h"
+#include "sst/elements/firefly/merlinEvent.h"
 
 using namespace SST::Merlin;
 
@@ -64,6 +66,17 @@ int topo_gpu::selectSwitch(const internal_router_event* ev)
     return static_cast<int>(std::hash<uint64_t>{}(key) % static_cast<uint64_t>(num_nvswitches));
 }
 
+int topo_gpu::selectSharpSwitch(uint64_t collectiveId, uint32_t fragId) const
+{
+    uint64_t x = collectiveId + 0x9e3779b97f4a7c15ULL;
+    x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;
+    x = (x ^ (x >> 27)) * 0x94d049bb133111ebULL;
+    x = x ^ (x >> 31);
+
+    const int base = static_cast<int>(x % static_cast<uint64_t>(num_nvswitches));
+    return (base + static_cast<int>(fragId % static_cast<uint32_t>(num_nvswitches))) % num_nvswitches;
+}
+
 void topo_gpu::route_packet(int port, int vc, internal_router_event* ev)
 {
     (void)port;
@@ -79,7 +92,17 @@ void topo_gpu::route_packet(int port, int vc, internal_router_event* ev)
             ev->setNextPort(num_nvswitches);
         }
         else {
-            ev->setNextPort(selectSwitch(ev));
+            auto* req = ev->inspectRequest();
+            auto* ffEvent = req ? dynamic_cast<SST::Firefly::FireflyNetworkEvent*>(req->inspectPayload()) : nullptr;
+
+            if ( ffEvent && ffEvent->isSharp() ) {
+                const int sharpPort = selectSharpSwitch(ffEvent->sharpCollectiveId(), ffEvent->sharpFragId());
+                output.output("topo_gpu rtr=%d SHARP route dst=%d collective=%" PRIu64 " frag=%" PRIu32 " -> switch=%d\n",
+                    router_id, dst, ffEvent->sharpCollectiveId(), ffEvent->sharpFragId(), sharpPort);
+                ev->setNextPort(sharpPort);
+            } else {
+                ev->setNextPort(selectSwitch(ev));
+            }
         }
     }
     else {

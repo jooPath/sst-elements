@@ -136,7 +136,8 @@ class SendMachine {
     SendMachine( Nic& nic, int nodeId, int verboseLevel, int verboseMask, int myId,
               int packetSizeInBytes, int pktOverhead, int maxQsize, int unit, bool flag = false ) :
             m_nic(nic), m_id(myId), m_packetSizeInBytes( packetSizeInBytes - pktOverhead ),
-            m_unit(unit), m_pktOverhead(pktOverhead), m_activeEntry(NULL), m_I_manage( flag ), m_numSent(0)
+            m_unit(unit), m_pktOverhead(pktOverhead), m_activeEntry(NULL), m_I_manage( flag ),
+            m_numSent(0), m_sharpFragCounter(0)
         {
             char buffer[100];
             snprintf(buffer,100,"@t:%d:Nic::SendMachine%d::@p():@l ",nodeId,myId);
@@ -194,4 +195,5 @@ class SendMachine {
         std::queue< SendEntryBase* > m_sendQ;
 
         int m_numSent;
+        uint32_t m_sharpFragCounter;
 };

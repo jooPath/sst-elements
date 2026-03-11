@@ -35,6 +35,8 @@ class SendEntryBase {
     virtual void copyOut( Output& dbg, int numBytes,
             FireflyNetworkEvent& event, std::vector<MemOp>& vec ) = 0;
     virtual bool shouldDelete() { return true; }
+    virtual bool isSharp() const { return false; }
+    virtual uint64_t sharpCollectiveId() const { return 0; }
     bool isCtrl() { return m_isCtrl; }
     bool isAck() { return m_isAck; }
     int txDelay() { return m_txDelay; }
@@ -82,6 +84,8 @@ class CmdSendEntry: public SendEntryBase, public EntryBase {
     int dest()          { return m_cmd->node; }
     void* hdr()         { return &m_hdr; }
     size_t hdrSize()    { return sizeof(m_hdr); }
+    bool isSharp() const override { return m_cmd->isSharp; }
+    uint64_t sharpCollectiveId() const override { return m_cmd->sharpCollectiveId; }
 
   private:
     MatchMsgHdr         m_hdr;

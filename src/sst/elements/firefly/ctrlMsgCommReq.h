@@ -48,7 +48,8 @@ class _CommReq : public MP::MessageRequestBase {
 
     _CommReq( Type type, std::vector<IoVec>& _ioVec,
         unsigned int dtypeSize, MP::RankID rank, uint32_t tag,
-        MP::Communicator group, int vn ) :
+        MP::Communicator group, int vn,
+        bool isSharp = false, uint64_t sharpCollectiveId = 0 ) :
         m_type( type ),
         m_ioVec( _ioVec ),
         m_resp( NULL ),
@@ -57,7 +58,9 @@ class _CommReq : public MP::MessageRequestBase {
         m_ignore( 0 ),
         m_isMine( true ),
         m_finiDelay_ns( 0 ),
-        m_vn(vn)
+        m_vn(vn),
+        m_isSharp(isSharp),
+        m_sharpCollectiveId(sharpCollectiveId)
     {
         m_hdr.count = getLength() / dtypeSize;
         m_hdr.dtypeSize = dtypeSize;
@@ -74,7 +77,8 @@ class _CommReq : public MP::MessageRequestBase {
 
     _CommReq( Type type, const Hermes::MemAddr& buf, uint32_t count,
         unsigned int dtypeSize, MP::RankID rank, uint32_t tag,
-        MP::Communicator group, int vn, MP::MessageResponse* resp = NULL ) :
+        MP::Communicator group, int vn, MP::MessageResponse* resp = NULL,
+        bool isSharp = false, uint64_t sharpCollectiveId = 0 ) :
         m_type( type ),
         m_resp( resp ),
         m_done( false ),
@@ -82,7 +86,9 @@ class _CommReq : public MP::MessageRequestBase {
         m_ignore( 0 ),
         m_isMine( true ),
         m_finiDelay_ns( 0 ),
-        m_vn(vn)
+        m_vn(vn),
+        m_isSharp(isSharp),
+        m_sharpCollectiveId(sharpCollectiveId)
     {
         m_hdr.count = count;
         m_hdr.dtypeSize = dtypeSize;
@@ -171,6 +177,8 @@ class _CommReq : public MP::MessageRequestBase {
     int m_ackKey;
     int m_ackNid;
     int m_vn;
+    bool m_isSharp;
+    uint64_t m_sharpCollectiveId;
 
   private:
 
