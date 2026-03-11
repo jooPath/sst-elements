@@ -58,6 +58,8 @@ libmerlin_la_SOURCES = \
 	topology/gpu.h \
 	hr_router/hr_router.h \
 	hr_router/hr_router.cc \
+	nvswitch/nvswitch_router.h \
+	nvswitch/nvswitch_router.cc \
 	hr_router/xbar_arb_age.h \
 	hr_router/xbar_arb_lru.h \
 	hr_router/xbar_arb_lru_infx.h \
