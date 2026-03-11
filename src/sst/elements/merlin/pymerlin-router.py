@@ -48,6 +48,19 @@ class hr_router(RouterTemplate):
         return "topology"
 
 
+class nvswitch_router(hr_router):
+    def __init__(self):
+        hr_router.__init__(self)
+
+    def instanceRouter(self, name, radix, rtr_id):
+        rtr = sst.Component(name, "merlin.nvswitch")
+        self._applyStatisticsSettings(rtr)
+        rtr.addParams(self._getGroupParams("params"))
+        rtr.addParam("num_ports",radix)
+        rtr.addParam("id",rtr_id)
+        return rtr
+
+
 class SystemEndpoint(Buildable):
     def __init__(self,system):
         Buildable.__init__(self)
