@@ -858,6 +858,22 @@ class hr_router(RouterTemplate):
     def getTopologySlotName(self):
         return "topology"
 
+
+class nvswitch_router(hr_router):
+    def __init__(self):
+        hr_router.__init__(self)
+
+    def instanceRouter(self, name, radix, rtr_id):
+        if self._check_first_build():
+            sst.addGlobalParams("%s_params"%self._instance_name, self._getGroupParams("params"))
+
+        rtr = sst.Component(name, "merlin.nvswitch")
+        self._applyStatisticsSettings(rtr)
+        rtr.addGlobalParamSet("%s_params"%self._instance_name)
+        rtr.addParam("num_ports",radix)
+        rtr.addParam("id",rtr_id)
+        return rtr
+
 class SystemEndpoint(Buildable):
     def __init__(self,system):
         Buildable.__init__(self)
